@@ -9,9 +9,37 @@ puts the result into a single actionable queue that a security team can
 actually work through.
 
 > **Status: early development / pre-alpha.**
-> Nothing described below is finished. This repository currently contains only
-> the project bootstrap. Do not deploy it, and do not treat any part of this
-> README as a description of working functionality.
+> Milestone 1 (project foundation) is implemented and pending owner review:
+> the domain models, SQLite persistence with Alembic migrations, and a small
+> local-development REST API exist and are tested. There is still no
+> ingestion, no deduplication, no risk scoring, no UI and no authentication.
+> See [docs/implementation-plan.md](docs/implementation-plan.md) for exact
+> scope and known limitations. Do not deploy this, and do not treat anything
+> below as a description of finished, production-ready functionality.
+
+## Local development (Milestone 1)
+
+Requires Python 3.12+. This is the only thing that works today — there is no
+Docker packaging and no UI yet.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Apply the database schema (SQLite by default, see .env.example)
+alembic upgrade head
+
+# Run the API (binds to localhost only)
+uvicorn threnda.app.main:app --host 127.0.0.1 --port 8080
+# -> http://127.0.0.1:8080/api/v1/health, http://127.0.0.1:8080/docs
+
+# Tests, lint, types
+pytest
+ruff check .
+ruff format --check .
+mypy threnda
+```
 
 ## Vision
 

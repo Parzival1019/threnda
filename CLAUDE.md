@@ -140,10 +140,12 @@ threnda/
 │   └── workflows/
 ├── docs/
 ├── demo-data/        synthetic datasets only
+├── migrations/       Alembic environment and versions
 ├── tests/
 ├── threnda/          application package
 ├── .env.example      placeholders only, never real secrets
 ├── .gitignore
+├── alembic.ini
 ├── CLAUDE.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -158,5 +160,15 @@ the project as MIT, Apache, GPL or anything else until the owner decides.
 
 ## Current state
 
-Bootstrap only. Milestone 1 has not started. Do not begin implementing the
-application unless explicitly asked to.
+Milestone 1 (project foundation) is implemented and pending owner review:
+app factory/configuration, SQLAlchemy 2 models for the full Milestone 1
+domain (Workspace, Source, ImportRun, Asset, Finding, Exposure,
+ExposureHistory), SQLite persistence with foreign keys enforced, an Alembic
+migration verified with an upgrade/downgrade round trip, Pydantic v2
+schemas, and a small local-development API
+(`/api/v1/health`, `/api/v1/exposures` incl. `PATCH`, `/api/v1/imports`,
+`/api/v1/sources`, `/api/v1/assets`). See docs/implementation-plan.md for
+exact scope, decisions and known limitations.
+
+There is still no authentication, no ingestion, and no UI — Milestones 2-7
+have not started. This is local-development-only; do not deploy it.

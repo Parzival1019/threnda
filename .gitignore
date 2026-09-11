@@ -55,9 +55,11 @@ exports/
 !demo-data/**/*.sarif
 
 # ---------------------------------------------------------------------------
-# Models (local AI is optional; model files are huge and not source)
+# Local AI model weights (local AI is optional; these files are huge and
+# not source). Anchored to the repo root: an unanchored "models/" would
+# also match threnda/app/models/, the ORM models package, which is source.
 # ---------------------------------------------------------------------------
-models/
+/models/
 *.gguf
 *.safetensors
 *.onnx
