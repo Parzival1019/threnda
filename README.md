@@ -9,14 +9,18 @@ puts the result into a single actionable queue that a security team can
 actually work through.
 
 > **Status: early development / pre-alpha.**
-> Milestones 1 (project foundation), 2 (ingestion) and 3 (deduplication and
-> exposures) are implemented and pending owner review: domain models,
-> SQLite persistence with Alembic migrations, workspace/source
+> Milestones 1 (project foundation), 2 (ingestion), 3 (deduplication and
+> exposures) and 5 (web UI) are implemented and pending owner review: domain
+> models, SQLite persistence with Alembic migrations, workspace/source
 > provisioning, CSV/JSON/SARIF file upload, layered deduplication/
 > correlation with a manual-review queue for uncertain matches, an import
-> differential engine (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED), and a
-> local-development REST API exist and are tested. There is still no risk
-> scoring, no UI and no authentication. See
+> differential engine (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED), a
+> local-development REST API, and a server-rendered Jinja2 + HTMX UI
+> (findings queue, exposure detail, imports, sources, review queue,
+> dashboard) all exist and are tested. There is still no risk scoring
+> (Milestone 4) and no authentication (Milestone 7) — the web UI's
+> workspace selection and CSRF protection are both plain browsing
+> conveniences, not access control. See
 > [docs/implementation-plan.md](docs/implementation-plan.md) for exact
 > scope and known limitations, and
 > [docs/deduplication.md](docs/deduplication.md) for the correlation/
@@ -25,8 +29,7 @@ actually work through.
 
 ## Local development
 
-Requires Python 3.12+. This is the only thing that works today — there is no
-Docker packaging and no UI yet; everything is through the HTTP API.
+Requires Python 3.12+. There is no Docker packaging yet (Milestone 7).
 
 ```bash
 python -m venv .venv
@@ -39,9 +42,10 @@ pip install -e ".[dev]"
 mkdir -p data
 alembic upgrade head
 
-# Run the API (binds to localhost only)
+# Run the app (binds to localhost only)
 uvicorn threnda.app.main:app --host 127.0.0.1 --port 8080
-# -> http://127.0.0.1:8080/api/v1/health, http://127.0.0.1:8080/docs
+# -> http://127.0.0.1:8080/ (web UI, redirects to onboarding on a fresh database)
+# -> http://127.0.0.1:8080/api/v1/health, http://127.0.0.1:8080/docs (JSON API)
 
 # Tests, lint, types, dependency sanity
 pytest
@@ -53,9 +57,14 @@ pip check
 
 ### Importing a synthetic finding
 
-Create a workspace and a source, then upload one of the synthetic samples
-in `demo-data/` — see [docs/importers.md](docs/importers.md) for the full
-CSV/JSON/SARIF reference and every endpoint's exact contract:
+Through the web UI: open `http://127.0.0.1:8080/`, create a workspace, add a
+source under **Sources**, then **New import** and upload one of the
+synthetic samples in `demo-data/`.
+
+Through the HTTP API directly — create a workspace and a source, then upload
+one of the synthetic samples in `demo-data/` — see
+[docs/importers.md](docs/importers.md) for the full CSV/JSON/SARIF reference
+and every endpoint's exact contract:
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/workspaces \

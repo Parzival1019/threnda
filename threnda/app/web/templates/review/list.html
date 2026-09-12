@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+{% block title %}Review{% endblock %}
+{% block page_title %}Possible duplicates{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Review queue</h2>
+  <p>A POSSIBLE-confidence match is never merged automatically — confirm or
+     reject each candidate individually. See docs/deduplication.md.</p>
+</div>
+
+{% if candidates %}
+<div class="card" style="max-width:960px;margin-top:16px">
+  {% for candidate in candidates %}
+  <div class="card-row" style="align-items:flex-start;flex-wrap:wrap;gap:14px">
+    <div style="flex:1;min-width:280px">
+      <div style="font-size:12.5px;font-weight:500">{{ candidate.finding.title if candidate.finding else "Finding no longer available" }}</div>
+      <div class="mono" style="font-size:10.5px;color:var(--text-muted);margin-top:3px">
+        candidate match for exposure: {{ candidate.candidate_exposure.title if candidate.candidate_exposure else "—" }}
+      </div>
+      <div class="mono" style="font-size:10.5px;color:var(--text-muted);margin-top:3px">
+        similarity {{ "%.2f"|format(candidate.similarity_score) }} · flagged {{ candidate.created_at | humanize_dt }}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex:none">
+      <form method="post" action="/review/{{ candidate.id }}/merge">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary">Merge</button>
+      </form>
+      <form method="post" action="/review/{{ candidate.id }}/keep-separate">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-secondary">Keep separate</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>Nothing to review</h3>
+  <p>No POSSIBLE-confidence candidates are pending. New ones appear here when
+     an import's fuzzy match isn't confident enough to auto-correlate.</p>
+</div>
+{% endif %}
+{% endblock %}

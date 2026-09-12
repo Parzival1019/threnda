@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block title %}{{ run.filename }}{% endblock %}
+{% block page_title %}{{ run.filename }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>{{ run.filename }}</h2>
+  <p class="mono" style="font-size:11.5px;color:var(--text-muted)">
+    started {{ run.started_at | humanize_dt }}{% if run.completed_at %} · completed {{ run.completed_at | humanize_dt }}{% endif %}
+  </p>
+</div>
+<div class="stat-grid">
+  <div class="stat-tile"><div class="label">Status</div><div class="value" style="font-size:13px">{{ run.status.value }}</div></div>
+  <div class="stat-tile"><div class="label">Total rows</div><div class="value">{{ run.total_records }}</div></div>
+  <div class="stat-tile"><div class="label">Successful</div><div class="value">{{ run.successful_records }}</div></div>
+  <div class="stat-tile {{ 'bad' if run.failed_records else '' }}"><div class="label">Failed rows</div><div class="value">{{ run.failed_records }}</div></div>
+  <div class="stat-tile"><div class="label">New</div><div class="value">{{ run.new_findings }}</div></div>
+  <div class="stat-tile"><div class="label">Unchanged</div><div class="value">{{ run.unchanged_findings }}</div></div>
+  <div class="stat-tile"><div class="label">Updated</div><div class="value">{{ run.updated_findings }}</div></div>
+  <div class="stat-tile good"><div class="label">Resolved</div><div class="value">{{ run.resolved_findings }}</div></div>
+  <div class="stat-tile"><div class="label">Reopened</div><div class="value">{{ run.reopened_findings }}</div></div>
+</div>
+{% if run.failed_records %}
+<div class="notice" style="margin-top:16px">
+  <span class="dot" aria-hidden="true"></span>
+  <div>Per-row error messages are shown once, immediately after an upload, and are not stored on the run
+    afterwards (see docs/importers.md). This run recorded {{ run.failed_records }} failed row(s).</div>
+</div>
+{% endif %}
+<div style="margin-top:16px">
+  <a class="btn btn-secondary" href="/imports?workspace_id={{ workspace.id }}">Back to imports</a>
+</div>
+{% endblock %}

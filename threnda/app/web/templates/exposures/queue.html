@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block title %}Queue{% endblock %}
+{% block content_class %}no-pad{% endblock %}
+{% block page_title %}Findings{% endblock %}
+{% block topbar_actions %}
+  <div class="search-box">
+    <input id="search-input" type="text" name="q" value="{{ q or '' }}"
+           placeholder="Search findings by title"
+           hx-get="/exposures" hx-target="#queue-inner" hx-swap="outerHTML" hx-push-url="true"
+           hx-trigger="keyup changed delay:300ms" hx-include="#filters-form">
+    <span class="mono" style="font-size:10px;color:var(--text-muted)">/</span>
+  </div>
+  <a class="btn btn-primary" href="/imports/new?workspace_id={{ workspace.id }}">New import</a>
+{% endblock %}
+{% block content %}
+<div id="queue-page" style="display:flex;height:100%;overflow:hidden">
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+    {% include "exposures/_queue_inner.html" %}
+  </div>
+  <div id="detail-panel" class="panel">
+    <div class="panel-placeholder">Select a finding to see its detail.</div>
+  </div>
+</div>
+{% endblock %}

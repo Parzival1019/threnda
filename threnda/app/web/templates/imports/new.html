@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+{% block title %}New import{% endblock %}
+{% block page_title %}New import{% endblock %}
+{% block content %}
+<div id="import-wizard" style="max-width:760px">
+  <div class="page-header">
+    <h2>New import</h2>
+    <p>Point Threnda at scanner output from an existing source. Importing runs
+       validation and writes accepted rows in one step — there is no separate
+       preview before it commits.</p>
+  </div>
+
+  {% if not sources %}
+  <div class="empty-state">
+    <h3>No compatible sources yet</h3>
+    <p>Create a CSV, JSON or SARIF source first — it names the scanner and its format.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="/sources?workspace_id={{ workspace.id }}">Add a source</a>
+    </div>
+  </div>
+  {% else %}
+  <form hx-post="/imports/new" hx-target="#import-wizard" hx-swap="innerHTML"
+        hx-encoding="multipart/form-data" style="margin-top:20px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="source-select">Source</label>
+        <select id="source-select" name="source_id"
+                hx-post="/imports/sniff" hx-target="#mapping-area" hx-swap="innerHTML"
+                hx-encoding="multipart/form-data" hx-trigger="change"
+                hx-include="[name='source_id'],[name='file']">
+          {% for source in sources %}
+          <option value="{{ source.id }}">{{ source.name }} ({{ source.source_type.value }})</option>
+          {% endfor %}
+        </select>
+        <div class="hint">Reused across runs so re-imports correlate instead of duplicating.</div>
+      </div>
+      <div class="field">
+        <label for="file-input">File</label>
+        <input id="file-input" type="file" name="file" required
+               hx-post="/imports/sniff" hx-target="#mapping-area" hx-swap="innerHTML"
+               hx-encoding="multipart/form-data" hx-trigger="change"
+               hx-include="[name='source_id'],[name='file']">
+        <div class="hint">CSV, JSON, or SARIF — whichever the selected source is configured for.</div>
+      </div>
+    </div>
+
+    <div id="mapping-area"></div>
+
+    <div class="notice" style="margin-top:14px">
+      <span class="dot" aria-hidden="true"></span>
+      <div>Parsing happens in this process, on this host. Threnda has no
+        outbound connection — only the parsed findings are stored.</div>
+    </div>
+
+    <div style="margin-top:16px">
+      <button type="submit" class="btn btn-primary">Import</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

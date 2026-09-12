@@ -1,0 +1,125 @@
+<div id="queue-inner" class="table-wrap">
+<form id="filters-form" hx-get="/exposures" hx-target="#queue-inner" hx-swap="outerHTML"
+      hx-push-url="true" hx-trigger="change from:select" hx-include="#search-input">
+  <input type="hidden" name="workspace_id" value="{{ workspace.id }}">
+  <div class="filter-bar">
+    <span class="label">Filters</span>
+    <select name="status" aria-label="Filter by status">
+      <option value="">All statuses</option>
+      {% for s in statuses %}
+      <option value="{{ s.value }}" {% if status == s %}selected{% endif %}>{{ s.value.replace('_', ' ') }}</option>
+      {% endfor %}
+    </select>
+    <select name="severity" aria-label="Filter by severity">
+      <option value="">All severities</option>
+      {% for sv in severities %}
+      <option value="{{ sv.value }}" {% if severity == sv %}selected{% endif %}>{{ sv.value }}</option>
+      {% endfor %}
+    </select>
+    <select name="sort" aria-label="Sort by">
+      <option value="risk" {% if sort == 'risk' %}selected{% endif %}>Sort: risk score</option>
+      <option value="age" {% if sort == 'age' %}selected{% endif %}>Sort: oldest first</option>
+      <option value="last_seen" {% if sort == 'last_seen' %}selected{% endif %}>Sort: last seen</option>
+    </select>
+    <span class="spacer">
+      <span class="mono" style="font-size:10.5px;color:var(--text-muted)">{{ total }} finding{{ '' if total == 1 else 's' }}</span>
+      <a class="btn btn-ghost" href="/exposures?workspace_id={{ workspace.id }}">Reset</a>
+    </span>
+  </div>
+</form>
+
+<form id="bulk-form" method="post" action="/exposures/bulk" style="display:flex;flex-direction:column;flex:1;min-height:0">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="return_qs" value="{{ request.url.query }}">
+
+  <div class="bulk-bar" id="bulk-bar" hidden>
+    <span class="bulk-count mono">0 selected</span>
+    <button type="submit" formaction="/exposures/bulk?action=acknowledge" class="btn btn-secondary">Acknowledge</button>
+    <button type="submit" formaction="/exposures/bulk?action=in_progress" class="btn btn-secondary">Mark in progress</button>
+    <button type="submit" formaction="/exposures/bulk?action=accept_risk" class="btn btn-secondary">Accept risk</button>
+  </div>
+
+  <div class="table-head grid-row">
+    <input type="checkbox" id="select-all" aria-label="Select all findings">
+    <span></span>
+    <span>Finding</span>
+    <span>Asset</span>
+    <span class="col-wide">Owner</span>
+    <span class="col-wide">Source</span>
+    <span class="col-wide">Dup</span>
+    <span class="col-wide">Last seen</span>
+    <span>Status</span>
+    <span style="text-align:right">Age</span>
+  </div>
+
+  <div class="table-body">
+    {% if rows %}
+      {% for row in rows %}
+      {% set exposure = row.exposure %}
+      <div class="row grid-row" id="row-{{ exposure.id }}" aria-selected="false"
+           hx-get="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}"
+           hx-target="#detail-panel" hx-swap="innerHTML">
+        <input type="checkbox" name="ids" value="{{ exposure.id }}" aria-label="Select finding {{ exposure.id }}"
+               onclick="event.stopPropagation()">
+        <span class="sev-icon {{ exposure.severity | severity_class }}">
+          <span class="shape" aria-hidden="true"></span>
+          <span class="word">{{ exposure.severity | severity_letter }}</span>
+        </span>
+        <span class="title-cell">
+          <span class="ref">EXP-{{ exposure.id }}</span>
+          <span class="title">{{ exposure.title }}</span>
+        </span>
+        <span class="cell-muted">{{ row.asset }}</span>
+        <span class="cell-muted col-wide">{{ exposure.owner or "—" }}</span>
+        <span class="cell-muted col-wide">{{ row.source }}</span>
+        <span class="cell-muted col-wide" style="text-align:center">{{ row.dup_count }}</span>
+        <span class="cell-muted col-wide">{{ exposure.last_seen | humanize_dt }}</span>
+        <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status.value.replace('_', ' ') }}</span>
+        <span class="cell-num">{{ exposure.first_seen | humanize_age }}</span>
+      </div>
+      {% endfor %}
+    {% elif ever_any == 0 %}
+      <div class="first-run-card">
+        <div class="eyebrow">First run</div>
+        <h3>Nothing imported yet</h3>
+        <p>Threnda reads scanner output from a file you upload. Correlation and
+           deduplication run at import time, so the queue is the only place
+           you triage.</p>
+        <div class="step-grid">
+          <div><div class="n">01</div><div class="t">Add a source</div><div class="d">Name the scanner and pick a format.</div></div>
+          <div><div class="n">02</div><div class="t">Import a file</div><div class="d">CSV, JSON, or SARIF.</div></div>
+          <div><div class="n">03</div><div class="t">Triage the queue</div><div class="d">Re-imports arrive as a differential.</div></div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center;margin-top:20px">
+          <a class="btn btn-primary" href="/imports/new?workspace_id={{ workspace.id }}">Start first import</a>
+        </div>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <h3>No findings match this search</h3>
+        <p>{{ ever_any }} finding{{ '' if ever_any == 1 else 's' }} exist in this workspace. None of them match
+           the active filters.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="/exposures?workspace_id={{ workspace.id }}">Reset filters</a>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="pagination">
+    <span>{{ offset + 1 if rows else 0 }}–{{ offset + rows|length }} of {{ total }}</span>
+    <span class="spacer">
+      {% if offset > 0 %}
+      <a class="btn btn-ghost" href="/exposures?{{ merge_query(request, offset=[offset - page_size, 0]|max) }}"
+         hx-get="/exposures?{{ merge_query(request, offset=[offset - page_size, 0]|max) }}"
+         hx-target="#queue-inner" hx-swap="outerHTML" hx-push-url="true">Prev</a>
+      {% endif %}
+      {% if offset + page_size < total %}
+      <a class="btn btn-ghost" href="/exposures?{{ merge_query(request, offset=offset + page_size) }}"
+         hx-get="/exposures?{{ merge_query(request, offset=offset + page_size) }}"
+         hx-target="#queue-inner" hx-swap="outerHTML" hx-push-url="true">Next</a>
+      {% endif %}
+    </span>
+  </div>
+</form>
+</div>

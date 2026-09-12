@@ -45,11 +45,15 @@ instance/
 # ---------------------------------------------------------------------------
 # Uploaded / ingested files and exports
 # Real scan output must never end up in the repository.
+# Anchored to the repo root: an unanchored "imports/" would also match
+# threnda/app/web/templates/imports/ and threnda/app/api/v1/imports.py's
+# sibling test fixtures, which are source — same hazard already called out
+# for /models/ below.
 # ---------------------------------------------------------------------------
-uploads/
-ingest/
-imports/
-exports/
+/uploads/
+/ingest/
+/imports/
+/exports/
 *.sarif
 *.nessus
 !demo-data/**/*.sarif

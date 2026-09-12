@@ -596,25 +596,103 @@ Acceptance criteria:
 
 ## Milestone 5 — web UI
 
-**Status: not started**
+**Status: done (implementation), pending owner review**
 
 Scope: Jinja2 + HTMX UI — findings list, exposure detail, imports, sources,
-settings, minimal dashboard.
+review queue, minimal dashboard.
 
 Acceptance criteria:
 
-- [ ] Findings/exposures list: search, severity/source/owner/status filters,
-      risk range, sorting, pagination.
-- [ ] Exposure detail: full field set from the spec, action buttons
+- [x] Findings/exposures list: search (title), status/severity filters,
+      sorting (risk score/age/last seen), pagination.
+- [x] Exposure detail: full field set from the spec, action buttons
       (acknowledge, assign owner, set target date, change status, add note,
-      review possible duplicates).
-- [ ] Imports list and import detail with visible error reporting.
-- [ ] Sources list.
-- [ ] Minimal dashboard (open/critical/high/overdue/new this week/resolved
-      this week/average remediation age) — deliberately not a visualization
-      showpiece.
-- [ ] CSRF protection on all state-changing forms; HTML escaping verified.
-- [ ] Tests: route rendering, filter behaviour, CSRF enforcement.
+      a link into the review queue when a pending possible-duplicate
+      candidate points at the exposure).
+- [x] Imports list and a new-import wizard with visible error reporting
+      (differential counts and row errors from the real upload response).
+- [x] Sources list and creation.
+- [x] Minimal dashboard (open/critical/high/overdue/new this week/resolved
+      this week/average age of open exposures) — deliberately not a
+      visualization showpiece.
+- [x] CSRF protection on every state-changing form (double-submit cookie);
+      Jinja2's default autoescaping verified (no `|safe`/`Markup` used
+      anywhere in the templates).
+- [x] Tests: route rendering, filter/search/sort behaviour, CSRF
+      enforcement (missing and wrong token), workspace isolation, bulk
+      actions, the CSV mapping wizard, review-queue merge/keep-separate —
+      `tests/test_web_*.py`.
+
+### Design decisions made in this milestone
+
+- **No separate "preview" step for uploads.** `POST /api/v1/imports` parses,
+  validates and persists in one transaction — there is no dry-run endpoint,
+  so the wizard is honestly two steps (pick source + file, see the result),
+  not the three-step preview flow a design mockup might suggest.
+- **CSV column mapping via a small htmx round trip, not client-side
+  parsing.** `POST /imports/sniff` reads just the file's header row
+  server-side (the same decode path `CsvImporter.parse` uses) and pre-fills
+  the mapping table with the existing `guess_mapping` heuristic
+  (`threnda/app/services/ingestion/csv_importer.py`) — no CSV parsing
+  logic is duplicated in JavaScript.
+- **Sorting/filtering the queue is a web-layer-only query, not a change to
+  `GET /api/v1/exposures`.** Arbitrary column sorting isn't part of that
+  endpoint's documented contract (it always orders by risk score); the web
+  route builds its own `select(Exposure)` with the same filter predicates
+  plus a `sort` parameter, rather than extending the versioned JSON API's
+  behaviour for a UI-only need.
+- **Three extractions into `threnda/app/services/`** —
+  `exposures.apply_exposure_update`, `possible_duplicates.resolve_merge`/
+  `resolve_keep_separate`, and `ingestion/upload.handle_upload` — pulled out
+  of their API route handlers so the web UI's write actions run through
+  exactly the same audited/correlated/differential logic as the JSON API,
+  never a second copy of it. Every existing HTTP-level test for those
+  routes still passes unchanged; see `tests/test_service_*.py` for the new
+  unit-level coverage of the extracted functions themselves.
+- **CSRF without a session.** No authentication exists yet (Milestone 7),
+  so there is nothing to bind a session-tied CSRF token to. Uses the
+  double-submit-cookie pattern instead (`threnda/app/web/csrf.py`): a
+  random token cookie, echoed into every form as a hidden field and
+  compared back on every POST. Documented as a placeholder for Milestone
+  7's real session/CSRF story, same framing as the `actor` placeholder
+  used throughout the API.
+- **Workspace resolution without auth.** `threnda.app.web.deps.get_current_workspace`
+  resolves `?workspace_id=` (validated) > a `threnda_workspace_id` cookie
+  (validated) > the first workspace by id, raising a redirect to
+  `/workspaces/new` if none exist. The cookie is a browsing convenience,
+  not an access boundary — identical caveat to the API's caller-supplied
+  `workspace_id`.
+- **No settings page.** A prototype design reference included one showing
+  local accounts, API tokens and SSO — none of which exist before
+  Milestone 7. CLAUDE.md rules out describing unimplemented behaviour as
+  working, so it was left out rather than built with placeholder data.
+- **No command palette / row-cursor keyboard navigation.** A design
+  reference included a `⌘K` command palette and `j`/`k` row navigation;
+  both would need a meaningful amount of hand-rolled JavaScript for a
+  "minimal JavaScript" server-rendered app (CLAUDE.md). `static/js/app.js`
+  is three small enhancements instead: `/` focuses search, `Esc` closes the
+  detail panel, and the bulk-action bar shows a live selection count.
+- **Fonts and htmx are vendored/system, not CDN-loaded.** A design
+  reference used hosted Google Fonts; Community is self-hosted and
+  offline-first, so the UI uses system font stacks instead. htmx itself is
+  vendored at `static/vendor/htmx.min.js` rather than loaded from a CDN,
+  for the same reason.
+
+### Known limitations after Milestone 5
+
+- No "risk range" filter control in the queue UI — `Exposure.risk_score` is
+  sortable/filterable at the data layer but always `0` until Milestone 4's
+  scoring engine exists, so a dedicated range slider wasn't built yet.
+- The queue's detail panel does not live-refresh the corresponding table
+  row after an edit (e.g. an updated status badge) without reloading the
+  queue — a nice-to-have, not a correctness gap (the underlying data is
+  always updated correctly).
+- Import detail pages cannot show historical per-row error messages —
+  `ImportRun` only stores aggregate counts; the detailed messages are
+  returned once, in the upload response itself (see docs/importers.md).
+- Still no authentication — the workspace cookie and CSRF token are both
+  browsing conveniences, not access control, same caveat as every `actor`
+  field in this codebase since Milestone 1.
 
 ## Milestone 6 — pentest ingestion, optional local AI
 

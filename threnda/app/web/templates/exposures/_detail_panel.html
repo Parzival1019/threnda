@@ -1,0 +1,176 @@
+<div class="panel-header">
+  <div class="row1">
+    <span class="sev-icon {{ exposure.severity | severity_class }}"><span class="shape" aria-hidden="true"></span></span>
+    <span class="mono" style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary)">{{ exposure.severity.value }}</span>
+    <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status.value.replace('_', ' ') }}</span>
+    <a data-close class="btn btn-ghost" style="margin-left:auto"
+       hx-get="/exposures/panel/close?workspace_id={{ workspace.id }}"
+       hx-target="#detail-panel" hx-swap="innerHTML" aria-label="Close detail panel">esc</a>
+  </div>
+  <div class="ref mono">EXP-{{ exposure.id }}</div>
+  <div class="title">{{ exposure.title }}</div>
+</div>
+
+<div class="panel-tabs">
+  {% for t in ["evidence", "identity", "timeline", "remediation"] %}
+  <a class="panel-tab" aria-current="{{ 'true' if tab == t else 'false' }}"
+     hx-get="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}&tab={{ t }}"
+     hx-target="#detail-panel" hx-swap="innerHTML"
+     href="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}&tab={{ t }}">{{ t | capitalize }}</a>
+  {% endfor %}
+</div>
+
+<div class="panel-body">
+  {% if tab == "evidence" %}
+    <div>
+      <div class="section-label">Linked findings ({{ findings | length }})</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        {% for finding in findings %}
+        <div class="kv-block">
+          <div><span class="k">source</span> {{ finding.source.name if finding.source else "—" }} ({{ finding.source.source_type.value if finding.source else "—" }})</div>
+          <div><span class="k">first seen</span> {{ finding.first_seen | humanize_dt }}</div>
+          <div><span class="k">last seen</span> {{ finding.last_seen | humanize_dt }}</div>
+          {% if finding.resolved_at %}<div><span class="k">resolved</span> {{ finding.resolved_at | humanize_dt }}</div>{% endif %}
+          {% if finding.cve %}<div><span class="k">cve</span> {{ finding.cve }}</div>{% endif %}
+        </div>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:12px">No findings are currently linked to this exposure.</p>
+        {% endfor %}
+      </div>
+    </div>
+    {% set all_refs = [] %}
+    {% for finding in findings %}{% for ref in finding.references %}{% if ref not in all_refs %}{% set _ = all_refs.append(ref) %}{% endif %}{% endfor %}{% endfor %}
+    {% if all_refs %}
+    <div>
+      <div class="section-label">References</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        {% for ref in all_refs %}<div class="mono" style="font-size:11.5px;color:var(--accent);word-break:break-all">{{ ref }}</div>{% endfor %}
+      </div>
+      <div style="margin-top:8px;font-size:10.5px;color:var(--text-muted)" class="mono">references are recorded as text, not fetched — the host stays offline</div>
+    </div>
+    {% endif %}
+
+  {% elif tab == "identity" %}
+    <div>
+      <div class="section-label">Normalized identity</div>
+      <div class="kv-block" style="margin-top:8px">
+        <div><span class="k">fingerprint</span> {{ exposure.canonical_fingerprint }}</div>
+        <div><span class="k">linked findings</span> {{ findings | length }}</div>
+      </div>
+    </div>
+    <div class="kv-grid">
+      <div><div class="label">First seen</div><div class="value">{{ exposure.first_seen | humanize_dt }}</div></div>
+      <div><div class="label">Last seen</div><div class="value">{{ exposure.last_seen | humanize_dt }}</div></div>
+      <div><div class="label">Age</div><div class="value">{{ exposure.first_seen | humanize_age }}</div></div>
+      <div><div class="label">Owner</div><div class="value">{{ exposure.owner or "—" }}</div></div>
+    </div>
+    <div class="mono" style="font-size:11px;color:var(--text-muted)">the fingerprint is what survives a re-import — findings that no longer share it correlate elsewhere instead</div>
+
+  {% elif tab == "timeline" %}
+    <div>
+      <div class="section-label">Activity</div>
+      <div class="timeline" style="margin-top:12px">
+        {% for event in history | reverse %}
+        <div class="timeline-item">
+          <div class="timeline-rail">
+            <span class="timeline-dot" aria-hidden="true"></span>
+            {% if not loop.last %}<span class="timeline-line"></span>{% endif %}
+          </div>
+          <div style="min-width:0">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span class="timeline-title">{{ event.event_type.value.replace('_', ' ') }}</span>
+              <span class="timeline-when">{{ event.timestamp | humanize_dt }}</span>
+            </div>
+            {% if event.previous_value or event.new_value %}
+            <div class="timeline-note">
+              {% if event.previous_value %}{{ event.previous_value }} → {% endif %}{{ event.new_value or "" }}
+            </div>
+            {% endif %}
+            <div class="timeline-by mono">{{ event.actor or "system" }}</div>
+          </div>
+        </div>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:12px">No history yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+  {% elif tab == "remediation" %}
+    {% if pending_duplicate %}
+    <div class="notice">
+      <span class="dot" aria-hidden="true"></span>
+      <div>A pending possible-duplicate candidate points at this exposure.
+        <a href="/review?workspace_id={{ workspace.id }}">Review it</a> before acting further here.</div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="tab" value="remediation">
+      <label for="status-select">Status</label>
+      <div style="display:flex;gap:8px">
+        <select id="status-select" name="status" style="flex:1;appearance:none;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);padding:8px 10px;font:400 12px var(--font-mono);color:var(--text-primary)">
+          {% for s in statuses %}
+          <option value="{{ s.value }}" {% if exposure.status == s %}selected{% endif %}>{{ s.value.replace('_', ' ') }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary">Update</button>
+      </div>
+    </form>
+
+    <form method="post" action="/exposures/{{ exposure.id }}"
+          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="tab" value="remediation">
+      <input type="hidden" name="acknowledged" value="{{ 'false' if exposure.acknowledged else 'true' }}">
+      <button type="submit" class="btn btn-secondary">{{ "Unacknowledge" if exposure.acknowledged else "Acknowledge" }}</button>
+    </form>
+
+    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="tab" value="remediation">
+      <label for="owner-input">Owner</label>
+      <div style="display:flex;gap:8px">
+        <input id="owner-input" type="text" name="owner" value="{{ exposure.owner or '' }}" maxlength="200" placeholder="Unassigned">
+        <button type="submit" class="btn btn-secondary">Save</button>
+      </div>
+    </form>
+
+    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="tab" value="remediation">
+      <label for="target-date-input">Remediation target date</label>
+      <div style="display:flex;gap:8px">
+        <input id="target-date-input" type="date" name="remediation_target_date"
+               value="{{ exposure.remediation_target_date.isoformat() if exposure.remediation_target_date else '' }}">
+        <button type="submit" class="btn btn-secondary">Save</button>
+      </div>
+    </form>
+
+    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="tab" value="remediation">
+      <label for="remediation-input">Remediation</label>
+      <textarea id="remediation-input" name="remediation" rows="3">{{ exposure.remediation or '' }}</textarea>
+      <button type="submit" class="btn btn-secondary" style="align-self:flex-start">Save</button>
+    </form>
+
+    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="tab" value="timeline">
+      <label for="note-input">Add a note</label>
+      <textarea id="note-input" name="note" rows="2" placeholder="Investigating with..."></textarea>
+      <button type="submit" class="btn btn-secondary" style="align-self:flex-start">Add note</button>
+    </form>
+
+    <div class="notice">
+      <span class="dot" aria-hidden="true"></span>
+      <div>Threnda does not apply fixes. It records the decision and who made it, in the Timeline tab.</div>
+    </div>
+  {% endif %}
+</div>

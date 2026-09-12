@@ -1,0 +1,20 @@
+{% if columns %}
+<div class="field" style="margin-top:14px">
+  <label>Map columns</label>
+  <div class="hint">This CSV source has no saved mapping yet — map at least one column to "title" (required).</div>
+  <div class="card" style="margin-top:8px">
+    {% for col in columns %}
+    <div class="card-row">
+      <span class="k mono" style="width:auto;flex:1">{{ col.name }}</span>
+      <input type="hidden" name="mapping_column_{{ loop.index }}" value="{{ col.name }}">
+      <select name="mapping_target_{{ loop.index }}" aria-label="Target field for column {{ col.name }}" style="min-width:170px">
+        <option value="">(ignore this column)</option>
+        {% for field in target_fields %}
+        <option value="{{ field }}" {% if col.guess == field %}selected{% endif %}>{{ field }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

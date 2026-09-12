@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+{% block title %}Sources{% endblock %}
+{% block page_title %}Sources{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Sources</h2>
+  <p>A source names a scanner and the format it exports. Reused across
+     import runs so re-imports correlate instead of duplicating.</p>
+</div>
+
+{% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+
+<div style="max-width:900px;display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">
+  <div style="flex:2;min-width:320px">
+    {% if sources %}
+    <div class="card">
+      {% for source in sources %}
+      <div class="card-row">
+        <span class="k">{{ source.name }}</span>
+        <span class="v mono">{{ source.source_type.value }}</span>
+        <span class="v mono" style="margin-left:auto">created {{ source.created_at | humanize_dt }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h3>No sources yet</h3>
+      <p>Add one to start importing.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="flex:1;min-width:260px">
+    <form method="post" action="/sources?workspace_id={{ workspace.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="source-name">Source name</label>
+        <input id="source-name" type="text" name="name" required maxlength="200" placeholder="e.g. nightly-sca">
+      </div>
+      <div class="field">
+        <label for="source-type">Format</label>
+        <select id="source-type" name="source_type">
+          {% for t in source_types %}
+          <option value="{{ t.value }}">{{ t.value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">Add source</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

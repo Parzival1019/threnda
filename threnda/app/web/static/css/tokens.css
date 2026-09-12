@@ -1,0 +1,41 @@
+/*
+ * Design tokens transcribed from the "Core app screens v1" prototype
+ * (direction D, "quiet console"): a dark, low-chroma console with mono
+ * numerals/labels and a single desaturated cyan accent.
+ *
+ * Fonts use system stacks, not the prototype's hosted Google Fonts — see
+ * docs/implementation-plan.md, Milestone 5 decisions: Community is
+ * self-hosted/offline-first and should not fetch webfonts at runtime.
+ */
+:root {
+  --bg: #0c0b0a;
+  --bg-panel: #131211;
+  --bg-elevated: #1b1a19;
+  --bg-hover: #232221;
+  --border: #2c2b29;
+  --border-strong: #3a3835;
+
+  --text-primary: #ecebe9;
+  --text-secondary: #b4b1ab;
+  --text-muted: #979692;
+
+  --accent: #78b9c8;
+  --accent-hover: #9fd2de;
+  --accent-fg: #131211;
+
+  --critical: #e0857c;
+  --high: #d3a45f;
+  --medium: #8fa6b3;
+  --low: #b4b1ab;
+  --info: #979692;
+  --positive: #8fb79a;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", "Consolas", monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 9px;
+}

@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block title %}Imports{% endblock %}
+{% block page_title %}Imports{% endblock %}
+{% block topbar_actions %}
+  <a class="btn btn-primary" href="/imports/new?workspace_id={{ workspace.id }}">New import</a>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Import history</h2>
+  <p>Every run, including a failed one, is a permanent record — nothing here is ever deleted.</p>
+</div>
+{% if runs %}
+<div class="card" style="margin-top:16px">
+  {% for run in runs %}
+  <a class="card-row" href="/imports/{{ run.id }}?workspace_id={{ workspace.id }}" style="text-decoration:none;color:inherit">
+    <span class="k">{{ run.filename }}</span>
+    <span class="v mono">{{ run.started_at | humanize_dt }}</span>
+    <span class="status-pill {{ run.status | status_class }}" style="margin-left:12px">{{ run.status.value }}</span>
+    <span class="v mono" style="margin-left:auto">{{ run.successful_records }}/{{ run.total_records }} ok · {{ run.failed_records }} failed</span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No imports yet</h3>
+  <p>Import a file to get started.</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="/imports/new?workspace_id={{ workspace.id }}">New import</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

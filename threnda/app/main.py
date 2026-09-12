@@ -14,14 +14,20 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from threnda.app import __version__
 from threnda.app.api.v1.router import api_router
 from threnda.app.core.config import Settings, get_settings
 from threnda.app.core.middleware import MaxBodySizeMiddleware
 from threnda.app.db.session import create_engine_from_settings, create_sessionmaker
+from threnda.app.web.errors import register_web_exception_handlers
+from threnda.app.web.router import web_router
+
+STATIC_DIR = Path(__file__).parent / "web" / "static"
 
 DESCRIPTION = (
     "Every finding. One queue.\n\n"
@@ -58,6 +64,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(MaxBodySizeMiddleware, max_bytes=resolved_settings.max_upload_bytes)
     app.include_router(api_router)
+    app.include_router(web_router)
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    register_web_exception_handlers(app)
 
     return app
 

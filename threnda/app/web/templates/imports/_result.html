@@ -1,0 +1,36 @@
+<div>
+  <div class="page-header">
+    <h2>{{ "Import failed" if outcome.failed else "Import complete" }}</h2>
+    <p class="mono" style="font-size:11.5px;color:var(--text-muted)">{{ outcome.import_run.filename }} · {{ source.name }}</p>
+  </div>
+
+  {% if outcome.failed %}
+  <div class="error-banner">{{ outcome.failure_detail }}</div>
+  {% else %}
+  <div class="stat-grid">
+    <div class="stat-tile"><div class="label">New</div><div class="value">{{ outcome.import_run.new_findings }}</div></div>
+    <div class="stat-tile"><div class="label">Unchanged</div><div class="value">{{ outcome.import_run.unchanged_findings }}</div></div>
+    <div class="stat-tile"><div class="label">Updated</div><div class="value">{{ outcome.import_run.updated_findings }}</div></div>
+    <div class="stat-tile good"><div class="label">Resolved</div><div class="value">{{ outcome.import_run.resolved_findings }}</div></div>
+    <div class="stat-tile"><div class="label">Reopened</div><div class="value">{{ outcome.import_run.reopened_findings }}</div></div>
+    <div class="stat-tile {{ 'bad' if outcome.import_run.failed_records else '' }}"><div class="label">Row errors</div><div class="value">{{ outcome.import_run.failed_records }}</div></div>
+  </div>
+  {% endif %}
+
+  {% if outcome.row_errors %}
+  <div class="error-table">
+    <div class="head">{{ outcome.row_errors | length }} row(s) were skipped — not imported and not resolved</div>
+    <table>
+      <thead><tr><th>Row</th><th>Problem</th></tr></thead>
+      <tbody>
+        {% for err in outcome.row_errors %}<tr><td>{{ err.index }}</td><td>{{ err.message }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div style="display:flex;gap:10px;margin-top:18px">
+    <a class="btn btn-primary" href="/exposures?workspace_id={{ workspace.id }}">Go to queue</a>
+    <a class="btn btn-secondary" href="/imports/new?workspace_id={{ workspace.id }}">Import another file</a>
+  </div>
+</div>
