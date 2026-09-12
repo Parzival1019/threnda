@@ -575,24 +575,106 @@ and a real partially-erroring JSON re-upload reporting `resolved_findings=0`).
 
 ## Milestone 4 — workflow, history, risk scoring
 
-**Status: not started**
+**Status: done (implementation), pending owner review**
 
 Scope: full exposure lifecycle enforcement, explainable rule-based risk
 scoring, richer API.
 
 Acceptance criteria:
 
-- [ ] Lifecycle transitions enforced server-side (`OPEN` → `ACKNOWLEDGED` →
-      `IN_PROGRESS` → `RESOLVED`/`RISK_ACCEPTED`, with `REOPENED` handling).
-- [ ] Rule-based risk score (0-100) from severity, CVSS, asset environment,
+- [x] Lifecycle transitions enforced server-side (`OPEN` → `ACKNOWLEDGED` →
+      `IN_PROGRESS` → `RESOLVED`/`RISK_ACCEPTED`, with `REOPENED` handling)
+      — enforced in both the JSON API (`409` on an invalid move) and the
+      web UI (the status `<select>` only ever offers a currently-valid
+      next status, in addition to also rejecting server-side).
+- [x] Rule-based risk score (0-100) from severity, CVSS, asset environment,
       internet exposure (if known), exploit evidence (if known), finding
       age, and manual business criticality — each contributing an
-      explainable, labelled delta.
-- [ ] `GET /api/v1/exposures/{id}` includes the score breakdown.
-- [ ] Rules configurable in code, structured so they can move to
-      user-configuration later without a rewrite.
-- [ ] Tests: each scoring input, transition validity/invalidity, score
-      explanation output.
+      explainable, labelled delta. Deterministic, no AI.
+- [x] `GET /api/v1/exposures/{id}` includes the score breakdown, and the
+      web detail panel's Risk tab renders it plus lets a user set the two
+      manual asset inputs.
+- [x] Rules configurable in code (`threnda.app.services.risk_scoring.RiskScoringConfig`,
+      with explicit construction-time validation) and structured so a
+      later user-configuration UI can build the same validated object from
+      stored values without changing the scoring engine itself.
+- [x] Tests: every scoring input in isolation plus clamping boundaries
+      (`tests/test_service_risk_scoring.py`), every allowed/forbidden
+      lifecycle edge (`tests/test_service_exposures.py`), API/UI
+      integration (`tests/test_api_exposures.py`, `tests/test_api_assets.py`,
+      `tests/test_web_risk.py`), the new migration
+      (`tests/test_migration_risk_fields.py`), and the ingestion/recompute
+      wiring (`tests/test_differential_engine.py`).
+
+### Design decisions made in this milestone
+
+- **Lifecycle graph is a DAG, not the acceptance criteria's literal single
+  chain.** The written chain (`OPEN → ACKNOWLEDGED → IN_PROGRESS →
+  RESOLVED/RISK_ACCEPTED`) is the *canonical* path, but forbidding every
+  shortcut (e.g. `OPEN → RISK_ACCEPTED` directly) would have regressed
+  Milestone 5's already-shipped bulk actions ("Mark in progress"/"Accept
+  risk," both applied to plain `OPEN` exposures) and forced pointless
+  clicks for real triage. What the graph does forbid: moving *backward*
+  between active states without an explicit reopen, and treating a closed
+  state (`RESOLVED`/`RISK_ACCEPTED`) as anything but a dead end you
+  explicitly reopen — the only edge out of either is back to `OPEN`. See
+  `threnda/app/services/exposures.py`'s `ALLOWED_STATUS_TRANSITIONS`.
+- **Two new Asset fields, one new Finding field — all additive, all
+  nullable/defaulted, none scanner-specific.** `Asset.internet_facing`
+  (nullable bool) and `Asset.business_criticality` (new `AssetCriticality`
+  enum, default `unknown`) are manual-only: no public CSV/JSON/SARIF
+  format carries either concept, and the spec calls criticality
+  explicitly manual. `Finding.exploit_evidence` (nullable bool) *can* come
+  from data — Threnda's own generic JSON format gained one new optional
+  key for it — but CSV/SARIF are untouched, since neither public format
+  has a field for it.
+- **`deferred=True` on all three new columns.** Migration `32832b96f2c3`'s
+  legacy-finding backfill (and the live correlation code it reuses)
+  selects whole `Finding`/`Asset` entities from a point in the upgrade
+  sequence *before* this milestone's migration has added these columns to
+  the table — an undeferred column would put its name in that implicit
+  SELECT's column list and break a from-scratch `alembic upgrade head`.
+  Deferring keeps a newly-added column out of the default load; risk
+  scoring explicitly accesses (and transparently lazy-loads) it wherever
+  it actually needs it, which is always after this migration has run.
+- **Risk-score recompute is wired into specific mutation points, not
+  lazily computed for the list view.** `Exposure.risk_score` (used for
+  list sorting/filtering) is recomputed and persisted at exposure
+  creation, a finding being linked (including via the possible-duplicate
+  review actions), a linked finding's content changing on re-import, and
+  a linked asset's manual fields changing. `GET /api/v1/exposures/{id}`
+  instead computes fresh on every call, so the single-item view (and its
+  breakdown) is always live even in the one gap the persisted value has:
+  pure time passing an age-bucket boundary with no other mutation since —
+  Community has no background worker, so this is a documented limitation,
+  not a silent inaccuracy.
+- **Recompute calls live in the ingestion/possible-duplicates orchestration
+  layer, not inside `threnda.app.services.dedup.correlation`.** The first
+  cut called `recompute_and_persist_risk_score` from inside
+  `create_standalone_exposure`/`link_finding_to_exposure` themselves, which
+  broke the same from-scratch migration for the same reason as the
+  deferred-column issue above (those two functions are exactly what
+  migration `32832b96f2c3`'s backfill calls). Moved the calls to their
+  callers (`threnda.app.services.ingestion.runner`,
+  `threnda.app.services.possible_duplicates`) instead, which are never
+  invoked from a historical migration — keeping `correlation.py` itself
+  free of any dependency on schema a later migration adds.
+- **No audit trail for `Asset` changes.** `ExposureHistory` is scoped to
+  the exposure workflow per the spec's own data model; adding an
+  equivalent table for two manually-set asset fields wasn't asked for and
+  would be a bigger addition than the fields themselves.
+
+### Known limitations after Milestone 4
+
+- The persisted list-view risk score does not update purely from elapsed
+  time (the age-bucket component) without some other mutation — see
+  "Design decisions" above. `docs/risk-scoring.md` documents this.
+- No standalone Asset management page in the web UI — the Risk tab can
+  edit an asset's two manual fields only in the context of an exposure
+  that links to it.
+- `Asset` has no audit trail — a `business_criticality`/`internet_facing`
+  change is not individually recorded anywhere (unlike every `Exposure`
+  field change).
 
 ## Milestone 5 — web UI
 

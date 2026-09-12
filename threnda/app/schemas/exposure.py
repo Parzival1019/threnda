@@ -75,3 +75,32 @@ class ExposureHistoryRead(BaseModel):
     new_value: str | None
     actor: str | None
     timestamp: datetime
+
+
+class RiskScoreComponentRead(BaseModel):
+    """One named, explainable contribution to a risk score.
+
+    Mirrors ``threnda.app.services.risk_scoring.RiskScoreComponent`` —
+    kept as a separate schema (rather than reusing the dataclass directly
+    as a response model) so the API's response shape doesn't change if the
+    internal engine's representation ever does.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    label: str
+    points: int
+    detail: str
+
+
+class ExposureDetailRead(ExposureRead):
+    """``GET /api/v1/exposures/{id}``'s response — adds the score breakdown.
+
+    ``risk_score`` here is a freshly *computed* value (not necessarily the
+    same as the persisted list-view value at this exact instant) — see
+    threnda.app.services.risk_scoring's module docstring for why the
+    single-item view is always live while the list view reflects the last
+    explicit recompute.
+    """
+
+    risk_score_breakdown: list[RiskScoreComponentRead]

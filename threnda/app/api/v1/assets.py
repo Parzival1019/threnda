@@ -1,18 +1,26 @@
-"""Read-only access to assets."""
+"""Read access to assets, and the Milestone 4 manual risk-scoring update."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from threnda.app.api.deps import get_db
 from threnda.app.models.asset import Asset
 from threnda.app.models.enums import AssetEnvironment, AssetType
-from threnda.app.schemas.asset import AssetRead
+from threnda.app.schemas.asset import AssetRead, AssetUpdate
 from threnda.app.schemas.common import Page
+from threnda.app.services.assets import apply_asset_update
 
 router = APIRouter(prefix="/assets", tags=["assets"])
+
+
+def _get_asset_or_404(db: Session, workspace_id: int, asset_id: int) -> Asset:
+    asset = db.get(Asset, asset_id)
+    if asset is None or asset.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return asset
 
 
 @router.get("", response_model=Page[AssetRead])
@@ -38,3 +46,23 @@ def list_assets(
         limit=limit,
         offset=offset,
     )
+
+
+@router.patch("/{asset_id}", response_model=AssetRead)
+def update_asset(
+    asset_id: int,
+    payload: AssetUpdate,
+    workspace_id: int = Query(..., description="Workspace to scope this action to."),
+    db: Session = Depends(get_db),
+) -> AssetRead:
+    asset = _get_asset_or_404(db, workspace_id, asset_id)
+    changes = payload.model_dump(exclude_unset=True)
+    apply_asset_update(
+        db,
+        asset,
+        internet_facing=changes.get("internet_facing"),
+        internet_facing_set="internet_facing" in changes,
+        business_criticality=changes.get("business_criticality"),
+        business_criticality_set="business_criticality" in changes,
+    )
+    return AssetRead.model_validate(asset)

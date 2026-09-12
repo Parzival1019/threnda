@@ -11,6 +11,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from threnda.app.models.enums import PossibleDuplicateStatus
+from threnda.app.models.exposure import Exposure
 from threnda.app.models.finding import Finding
 from threnda.app.models.mixins import utcnow
 from threnda.app.models.possible_duplicate import PossibleDuplicate
@@ -18,6 +19,7 @@ from threnda.app.services.dedup.correlation import (
     create_standalone_exposure,
     link_finding_to_exposure,
 )
+from threnda.app.services.risk_scoring import recompute_and_persist_risk_score
 
 
 class PossibleDuplicateNotFoundError(Exception):
@@ -57,6 +59,9 @@ def resolve_merge(
     link_finding_to_exposure(
         db, finding, candidate.candidate_exposure_id, confidence="possible-merged", actor=actor
     )
+    exposure = db.get(Exposure, candidate.candidate_exposure_id)
+    if exposure is not None:
+        recompute_and_persist_risk_score(db, exposure)
     candidate.status = PossibleDuplicateStatus.MERGED
     candidate.resolved_at = utcnow()
     candidate.resolved_by = actor
@@ -73,7 +78,8 @@ def resolve_keep_separate(
     if finding is None:
         raise LinkedFindingMissingError
 
-    create_standalone_exposure(db, finding)
+    exposure = create_standalone_exposure(db, finding)
+    recompute_and_persist_risk_score(db, exposure)
     candidate.status = PossibleDuplicateStatus.KEPT_SEPARATE
     candidate.resolved_at = utcnow()
     candidate.resolved_by = actor

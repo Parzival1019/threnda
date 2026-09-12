@@ -29,6 +29,7 @@
         "type": "cloud_resource"
       },
       "remediation": "Restrict bucket policy to authenticated principals and enable access logging.",
+      "exploit_evidence": true,
       "references": []
     },
     {

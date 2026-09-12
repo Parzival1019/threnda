@@ -88,6 +88,11 @@ class NormalizedFinding:
     cwe: str | None = None
     evidence: str | None = None
     remediation: str | None = None
+    # Milestone 4 risk-scoring input (threnda.app.services.risk_scoring).
+    # `None` = not reported by this source. Only Threnda's own generic JSON
+    # format currently sets this (docs/importers.md) — CSV and SARIF have
+    # no public field for it, so their importers leave it `None`.
+    exploit_evidence: bool | None = None
     references: tuple[str, ...] = ()
     asset: NormalizedAsset | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)

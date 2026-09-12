@@ -235,3 +235,67 @@ def test_patch_exposure_wrong_workspace_returns_404(
         json={"owner": "mallory"},
     )
     assert response.status_code == 404
+
+
+def test_patch_exposure_invalid_transition_returns_409_and_does_not_mutate(
+    client: TestClient, db_session: Session
+) -> None:
+    workspace_a, _, exposure = _seed_exposures(db_session)
+    # ACKNOWLEDGED -> OPEN is not a documented edge (only RESOLVED/
+    # RISK_ACCEPTED reopen to OPEN) — see threnda.app.services.exposures.
+    client.patch(
+        f"/api/v1/exposures/{exposure.id}",
+        params={"workspace_id": workspace_a.id},
+        json={"status": "acknowledged"},
+    )
+
+    response = client.patch(
+        f"/api/v1/exposures/{exposure.id}",
+        params={"workspace_id": workspace_a.id},
+        json={"status": "open"},
+    )
+    assert response.status_code == 409
+
+    db_session.refresh(exposure)
+    assert exposure.status.value == "acknowledged"
+
+
+def test_get_exposure_includes_risk_score_breakdown(
+    client: TestClient, db_session: Session
+) -> None:
+    workspace_a, _, exposure = _seed_exposures(db_session)
+
+    response = client.get(
+        f"/api/v1/exposures/{exposure.id}", params={"workspace_id": workspace_a.id}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "risk_score_breakdown" in body
+    components = body["risk_score_breakdown"]
+    assert components, "breakdown must not be empty"
+    for component in components:
+        assert set(component) == {"label", "points", "detail"}
+    labels = {c["label"] for c in components}
+    assert "Severity" in labels
+    raw_total = sum(c["points"] for c in components)
+    assert body["risk_score"] == max(0, min(100, raw_total))
+
+
+def test_list_exposures_filters_by_risk_range(client: TestClient, db_session: Session) -> None:
+    workspace_a, _, _ = _seed_exposures(db_session)
+
+    response = client.get(
+        "/api/v1/exposures",
+        params={"workspace_id": workspace_a.id, "min_risk_score": 90},
+    )
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["risk_score"] == 95
+
+    response = client.get(
+        "/api/v1/exposures",
+        params={"workspace_id": workspace_a.id, "max_risk_score": 50},
+    )
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["risk_score"] == 40

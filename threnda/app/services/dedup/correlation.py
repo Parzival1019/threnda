@@ -48,6 +48,17 @@ from threnda.app.models.finding import Finding
 from threnda.app.models.possible_duplicate import PossibleDuplicate
 from threnda.app.services.dedup.similarity import title_similarity
 
+# Deliberately no dependency on threnda.app.services.risk_scoring here:
+# this module is reused by migration 32832b96f2c3's legacy-finding
+# backfill, which runs mid-upgrade-sequence, before a later migration has
+# necessarily added every column risk scoring might read. Recomputing a
+# score after correlation is the *caller's* job — see the
+# `recompute_and_persist_risk_score`/`_maybe_recompute_exposure_score`
+# call sites in threnda.app.services.ingestion.runner and
+# threnda.app.services.possible_duplicates, both of which are safe to
+# depend on the current schema because neither is ever invoked from an
+# old migration.
+
 HIGH_SIMILARITY_THRESHOLD = 0.92
 POSSIBLE_SIMILARITY_THRESHOLD = 0.72
 
@@ -195,4 +206,8 @@ def create_standalone_exposure(db: Session, finding: Finding) -> Exposure:
     db.add(exposure)
     db.flush()
     finding.exposure_id = exposure.id
+    # The session isn't autoflush (see threnda.app.db.session) — flush so
+    # a caller that immediately reads `exposure.findings` (e.g. risk
+    # scoring) sees this link, not a stale pre-link empty collection.
+    db.flush()
     return exposure

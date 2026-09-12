@@ -10,12 +10,15 @@ follow.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from threnda.app.models.asset import Asset
 from threnda.app.models.enums import SeverityLevel, SourceType
+from threnda.app.models.exposure import Exposure
 from threnda.app.models.finding import Finding
 from threnda.app.models.source import Source
 from threnda.app.models.workspace import Workspace
@@ -47,6 +50,8 @@ def _finding(
     title: str,
     severity: SeverityLevel = SeverityLevel.MEDIUM,
     asset_key: str | None = None,
+    cvss_score: float | None = None,
+    exploit_evidence: bool | None = None,
 ) -> NormalizedFinding:
     asset = (
         NormalizedAsset(canonical_key=asset_key, name=asset_key) if asset_key is not None else None
@@ -57,11 +62,19 @@ def _finding(
         title=title,
         severity=severity,
         asset=asset,
+        cvss_score=cvss_score,
+        exploit_evidence=exploit_evidence,
     )
 
 
 def _parsed(*findings: NormalizedFinding) -> ParsedImport:
     return ParsedImport(findings=tuple(findings), errors=(), total_records=len(findings))
+
+
+def _risk_score(db: Session, exposure_id: int) -> int:
+    exposure = db.get(Exposure, exposure_id)
+    assert exposure is not None
+    return exposure.risk_score
 
 
 def test_first_import_is_all_new_and_correlates_each_finding(db_session: Session) -> None:
@@ -147,6 +160,39 @@ def test_changed_content_is_updated_in_place(db_session: Session) -> None:
     assert finding.severity is SeverityLevel.CRITICAL
 
 
+def test_updated_content_recomputes_the_linked_exposures_risk_score(db_session: Session) -> None:
+    """Milestone 4: a re-import that raises a finding's CVSS should be
+    reflected in its exposure's persisted risk score, not just the finding
+    row — see threnda.app.services.risk_scoring."""
+    workspace_id, source_id = _workspace_and_source(db_session)
+    persist_parsed_import(
+        db_session,
+        workspace_id=workspace_id,
+        source_id=source_id,
+        filename="f1.json",
+        raw=b"1",
+        parsed=_parsed(_finding(fingerprint="fp-1", title="Finding one", cvss_score=None)),
+    )
+    finding = db_session.scalars(select(Finding).where(Finding.workspace_id == workspace_id)).one()
+    exposure_id = finding.exposure_id
+    assert exposure_id is not None
+    before = _risk_score(db_session, exposure_id)
+
+    persist_parsed_import(
+        db_session,
+        workspace_id=workspace_id,
+        source_id=source_id,
+        filename="f2.json",
+        raw=b"2",
+        parsed=_parsed(
+            _finding(fingerprint="fp-1", title="Finding one", cvss_score=9.9, exploit_evidence=True)
+        ),
+    )
+
+    after = _risk_score(db_session, exposure_id)
+    assert after > before
+
+
 def test_a_finding_missing_from_a_later_import_is_resolved_not_deleted(db_session: Session) -> None:
     workspace_id, source_id = _workspace_and_source(db_session)
     persist_parsed_import(
@@ -180,6 +226,72 @@ def test_a_finding_missing_from_a_later_import_is_resolved_not_deleted(db_sessio
         select(Finding).where(Finding.workspace_id == workspace_id, Finding.fingerprint == "fp-2")
     ).one()
     assert resolved.resolved_at is not None
+
+
+def test_resolving_a_finding_by_absence_recomputes_its_exposures_score(
+    db_session: Session,
+) -> None:
+    """A finding excluded from the score aggregation once it's source-
+    resolved (threnda.app.services.risk_scoring._scoring_findings) — the
+    exposure's persisted score must actually drop when that happens, not
+    just the underlying finding's CVSS becoming irrelevant in theory.
+
+    Uses two findings sharing one ``fingerprint`` (but distinct
+    ``source_finding_id``s) so Layer 1 exact-match correlation puts both on
+    the same exposure — the low-signal one stays active as a genuine
+    fallback once the high-signal one resolves, so the drop is real and
+    not masked by the "fall back to every finding" empty-active-set rule.
+    """
+    workspace_id, source_id = _workspace_and_source(db_session)
+    high_signal = _finding(
+        fingerprint="shared-fp", title="High signal", cvss_score=9.9, exploit_evidence=True
+    )
+    low_signal = _finding(fingerprint="shared-fp", title="Low signal")
+    persist_parsed_import(
+        db_session,
+        workspace_id=workspace_id,
+        source_id=source_id,
+        filename="f1.json",
+        raw=b"1",
+        parsed=ParsedImport(
+            findings=(
+                replace(high_signal, source_finding_id="a"),
+                replace(low_signal, source_finding_id="b"),
+            ),
+            errors=(),
+            total_records=2,
+        ),
+    )
+    findings = db_session.scalars(select(Finding).where(Finding.workspace_id == workspace_id)).all()
+    exposure_ids = {f.exposure_id for f in findings}
+    assert exposure_ids == {findings[0].exposure_id}, "both findings must land on one exposure"
+    exposure_id = findings[0].exposure_id
+    assert exposure_id is not None
+    before = _risk_score(db_session, exposure_id)
+
+    # Re-import reporting only the low-signal identity -> the high-signal
+    # one is RESOLVED by absence.
+    persist_parsed_import(
+        db_session,
+        workspace_id=workspace_id,
+        source_id=source_id,
+        filename="f2.json",
+        raw=b"2",
+        parsed=ParsedImport(
+            findings=(replace(low_signal, source_finding_id="b"),),
+            errors=(),
+            total_records=1,
+        ),
+    )
+
+    resolved = db_session.scalars(
+        select(Finding).where(
+            Finding.workspace_id == workspace_id, Finding.source_finding_id == "a"
+        )
+    ).one()
+    assert resolved.resolved_at is not None
+    after = _risk_score(db_session, exposure_id)
+    assert after < before
 
 
 def test_a_resolved_finding_reappearing_is_reopened(db_session: Session) -> None:

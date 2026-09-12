@@ -155,6 +155,7 @@ findings — not tied to a scanner:
       "asset": {"key": "host:example.test", "name": "example.test", "type": "host"},
       "evidence": "...",
       "remediation": "...",
+      "exploit_evidence": false,
       "references": ["https://example.test/advisory"]
     }
   ]
@@ -163,7 +164,10 @@ findings — not tied to a scanner:
 
 `title` is required. Either `severity` or `cvss` is required (a numeric
 `cvss` without a recognized `severity` derives one). `asset.type` must be
-one of the known asset types or it falls back to `unknown`. Example:
+one of the known asset types or it falls back to `unknown`. `exploit_evidence`
+is optional (`true`/`false`, or omit if not known) — a Milestone 4
+risk-scoring input (`docs/risk-scoring.md`); CSV and SARIF have no
+equivalent public field, so only this importer sets it. Example:
 `demo-data/json/synthetic-findings.json`.
 
 ## SARIF 2.1.0

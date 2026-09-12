@@ -95,6 +95,22 @@ class AssetEnvironment(enum.StrEnum):
     UNKNOWN = "unknown"
 
 
+class AssetCriticality(enum.StrEnum):
+    """Manually-assigned business importance of an asset.
+
+    Unlike ``AssetEnvironment`` (sometimes inferrable from naming/tooling),
+    this is always a human judgement call — see docs/community-v0.1-spec.md,
+    "RISK SCORING" ("manual business criticality") — so it has no importer
+    path and defaults to ``UNKNOWN`` until someone sets it.
+    """
+
+    UNKNOWN = "unknown"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
 class ExposureStatus(enum.StrEnum):
     """Remediation workflow status of an ``Exposure``.
 

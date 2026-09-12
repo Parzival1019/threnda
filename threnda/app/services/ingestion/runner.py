@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 
 from threnda.app.models.asset import Asset
 from threnda.app.models.enums import ExposureHistoryEventType, ImportStatus
+from threnda.app.models.exposure import Exposure
 from threnda.app.models.exposure_history import ExposureHistory
 from threnda.app.models.finding import Finding
 from threnda.app.models.import_run import ImportRun
@@ -56,6 +57,7 @@ from threnda.app.services.ingestion.base import (
     NormalizedFinding,
     ParsedImport,
 )
+from threnda.app.services.risk_scoring import recompute_and_persist_risk_score
 
 
 def compute_file_hash(raw: bytes) -> str:
@@ -92,6 +94,7 @@ def _content_changed(finding: Finding, normalized: NormalizedFinding) -> bool:
         or finding.evidence != normalized.evidence
         or finding.remediation != normalized.remediation
         or finding.fingerprint != normalized.fingerprint
+        or finding.exploit_evidence != normalized.exploit_evidence
         or list(finding.references) != list(normalized.references)
     )
 
@@ -107,6 +110,7 @@ def _apply_incoming_content(
     finding.cwe = normalized.cwe
     finding.evidence = normalized.evidence
     finding.remediation = normalized.remediation
+    finding.exploit_evidence = normalized.exploit_evidence
     finding.references = list(normalized.references)
     finding.raw_data = normalized.raw_data
     # `fingerprint` (the cross-source correlation signal) is allowed to
@@ -140,6 +144,22 @@ def _get_or_create_asset(db: Session, workspace_id: int, normalized: NormalizedA
     db.add(asset)
     db.flush()
     return asset
+
+
+def _maybe_recompute_exposure_score(db: Session, finding: Finding) -> None:
+    """Recompute the linked exposure's risk score, if there is one.
+
+    Called wherever this module changes something a linked finding
+    contributes to scoring (content on UPDATED/REOPENED, active-vs-resolved
+    status either way) — see threnda.app.services.risk_scoring. A finding
+    with no exposure yet (still pending POSSIBLE review) has nothing to
+    recompute.
+    """
+    if finding.exposure_id is None:
+        return
+    exposure = db.get(Exposure, finding.exposure_id)
+    if exposure is not None:
+        recompute_and_persist_risk_score(db, exposure)
 
 
 def _record_lifecycle_event(
@@ -226,6 +246,9 @@ def persist_parsed_import(
             finding.import_run_id = import_run.id
             if changed:
                 updated_count += 1
+                # Content that changed could be exactly the CVSS/exploit
+                # evidence the linked exposure's score depends on.
+                _maybe_recompute_exposure_score(db, finding)
             else:
                 unchanged_count += 1
             continue
@@ -238,6 +261,9 @@ def persist_parsed_import(
             finding.import_run_id = import_run.id
             _record_lifecycle_event(db, finding, ExposureHistoryEventType.REOPENED)
             reopened_count += 1
+            # A reopened finding re-enters the "active" set the risk score
+            # aggregates over (threnda.app.services.risk_scoring).
+            _maybe_recompute_exposure_score(db, finding)
             continue
 
         asset_id = (
@@ -260,6 +286,7 @@ def persist_parsed_import(
             cwe=normalized.cwe,
             evidence=normalized.evidence,
             remediation=normalized.remediation,
+            exploit_evidence=normalized.exploit_evidence,
             references=list(normalized.references),
             raw_data=normalized.raw_data,
             first_seen=now,
@@ -268,6 +295,10 @@ def persist_parsed_import(
         db.add(finding)
         db.flush()
         correlate_new_finding(db, finding)
+        # Sets finding.exposure_id for EXACT/HIGH/standalone correlation;
+        # stays None for a POSSIBLE candidate, which has no exposure yet
+        # to score (see _maybe_recompute_exposure_score).
+        _maybe_recompute_exposure_score(db, finding)
         new_count += 1
 
     # An import with row errors proves nothing about absence: a record that
@@ -285,6 +316,9 @@ def persist_parsed_import(
                 finding.resolved_at = now
                 _record_lifecycle_event(db, finding, ExposureHistoryEventType.RESOLVED)
                 resolved_count += 1
+                # This finding just left the "active" set the risk score
+                # aggregates over (threnda.app.services.risk_scoring).
+                _maybe_recompute_exposure_score(db, finding)
 
     import_run.new_findings = new_count
     import_run.unchanged_findings = unchanged_count

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     ForeignKey,
     String,
     UniqueConstraint,
@@ -20,7 +21,7 @@ from sqlalchemy.orm import (
 )
 
 from threnda.app.db.base import Base
-from threnda.app.models.enums import AssetEnvironment, AssetType, sa_enum
+from threnda.app.models.enums import AssetCriticality, AssetEnvironment, AssetType, sa_enum
 from threnda.app.models.mixins import utcnow
 from threnda.app.models.types import UTCDateTime
 
@@ -50,6 +51,25 @@ class Asset(Base):
     )
     environment: Mapped[AssetEnvironment] = mapped_column(
         sa_enum(AssetEnvironment), nullable=False, default=AssetEnvironment.UNKNOWN
+    )
+    # Both of the fields below are Milestone 4 risk-scoring inputs (see
+    # threnda.app.services.risk_scoring) that no importer can populate —
+    # no public CSV/JSON/SARIF format carries either concept, and
+    # "manual business criticality" is explicitly manual in
+    # docs/community-v0.1-spec.md. Nullable/unknown-by-default rather than
+    # a plain boolean/best-guess: the scoring engine treats "unknown"
+    # (never asked) differently from "known false" (asked, and it isn't).
+    #
+    # `deferred=True` for the same reason as `Finding.exploit_evidence`:
+    # migration 32832b96f2c3's backfill step (and the live
+    # `threnda.app.services.dedup.correlation` code it reuses) selects
+    # whole `Asset`/`Finding` entities from a point in the upgrade sequence
+    # before *this* migration has added these columns to the table —
+    # deferring keeps them out of that implicit column list. Explicitly
+    # accessed (and lazy-loaded) wherever risk scoring actually needs them.
+    internet_facing: Mapped[bool | None] = mapped_column(Boolean, nullable=True, deferred=True)
+    business_criticality: Mapped[AssetCriticality] = mapped_column(
+        sa_enum(AssetCriticality), nullable=False, default=AssetCriticality.UNKNOWN, deferred=True
     )
     # See threnda.app.models.source for why this is "meta" and not "metadata".
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, nullable=False, default=dict)

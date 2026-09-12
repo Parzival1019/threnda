@@ -18,8 +18,18 @@ from threnda.app.api.deps import get_db
 from threnda.app.models.enums import ExposureStatus, SeverityLevel
 from threnda.app.models.exposure import Exposure
 from threnda.app.schemas.common import Page
-from threnda.app.schemas.exposure import ExposureRead, ExposureUpdate
-from threnda.app.services.exposures import ExposureChanges, apply_exposure_update
+from threnda.app.schemas.exposure import (
+    ExposureDetailRead,
+    ExposureRead,
+    ExposureUpdate,
+    RiskScoreComponentRead,
+)
+from threnda.app.services.exposures import (
+    ExposureChanges,
+    InvalidStatusTransitionError,
+    apply_exposure_update,
+)
+from threnda.app.services.risk_scoring import compute_risk_score
 
 router = APIRouter(prefix="/exposures", tags=["exposures"])
 
@@ -77,14 +87,31 @@ def list_exposures(
     )
 
 
-@router.get("/{exposure_id}", response_model=ExposureRead)
+@router.get("/{exposure_id}", response_model=ExposureDetailRead)
 def get_exposure(
     exposure_id: int,
     workspace_id: int = Query(..., description="Workspace to scope results to."),
     db: Session = Depends(get_db),
-) -> ExposureRead:
+) -> ExposureDetailRead:
+    """Fetch one exposure, including a live risk-score breakdown.
+
+    ``risk_score``/``risk_score_breakdown`` here are computed fresh on
+    every call rather than read from the persisted column — see
+    ``threnda.app.services.risk_scoring``'s module docstring for why: this
+    is the one place staleness (an age-bucket boundary crossed with no
+    other mutation since) can never show through.
+    """
     exposure = _get_exposure_or_404(db, workspace_id, exposure_id)
-    return ExposureRead.model_validate(exposure)
+    result = compute_risk_score(exposure)
+    base = ExposureRead.model_validate(exposure).model_dump()
+    base["risk_score"] = result.total
+    return ExposureDetailRead(
+        **base,
+        risk_score_breakdown=[
+            RiskScoreComponentRead(label=c.label, points=c.points, detail=c.detail)
+            for c in result.components
+        ],
+    )
 
 
 @router.patch("/{exposure_id}", response_model=ExposureRead)
@@ -100,5 +127,8 @@ def update_exposure(
 ) -> ExposureRead:
     exposure = _get_exposure_or_404(db, workspace_id, exposure_id)
     changes = cast(ExposureChanges, payload.model_dump(exclude_unset=True, exclude={"note"}))
-    apply_exposure_update(db, exposure, changes, note=payload.note, actor=actor)
+    try:
+        apply_exposure_update(db, exposure, changes, note=payload.note, actor=actor)
+    except InvalidStatusTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ExposureRead.model_validate(exposure)

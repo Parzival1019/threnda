@@ -136,3 +136,43 @@ def test_asset_requires_a_key() -> None:
     result = JsonImporter().parse(raw)
 
     assert len(result.errors) == 1
+
+
+@pytest.mark.parametrize("exploit_evidence", [True, False])
+def test_exploit_evidence_round_trips(exploit_evidence: bool) -> None:
+    raw = _encode(
+        {
+            "findings": [
+                {
+                    "id": "f1",
+                    "title": "T",
+                    "severity": "high",
+                    "exploit_evidence": exploit_evidence,
+                }
+            ]
+        }
+    )
+
+    result = JsonImporter().parse(raw)
+
+    assert result.errors == ()
+    assert result.findings[0].exploit_evidence is exploit_evidence
+
+
+def test_exploit_evidence_defaults_to_none_when_omitted() -> None:
+    raw = _encode({"findings": [{"id": "f1", "title": "T", "severity": "high"}]})
+
+    result = JsonImporter().parse(raw)
+
+    assert result.findings[0].exploit_evidence is None
+
+
+def test_exploit_evidence_must_be_a_boolean() -> None:
+    raw = _encode(
+        {"findings": [{"id": "f1", "title": "T", "severity": "high", "exploit_evidence": "yes"}]}
+    )
+
+    result = JsonImporter().parse(raw)
+
+    assert len(result.errors) == 1
+    assert "exploit_evidence" in result.errors[0].message

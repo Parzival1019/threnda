@@ -16,6 +16,7 @@ docs/importers.md for the full field reference)::
           "asset": {"key": "host:example.test", "name": "example.test", "type": "host"},
           "evidence": "...",
           "remediation": "...",
+          "exploit_evidence": false,
           "references": ["https://example.test/advisory"]
         }
       ]
@@ -114,6 +115,10 @@ class JsonImporter:
 
         asset = self._normalize_asset(item.get("asset"))
 
+        exploit_evidence = item.get("exploit_evidence")
+        if exploit_evidence is not None and not isinstance(exploit_evidence, bool):
+            raise ValueError('"exploit_evidence" must be true, false, or omitted')
+
         return NormalizedFinding(
             source_finding_id=source_finding_id,
             fingerprint=compute_fingerprint(cve, asset.canonical_key if asset else None, title),
@@ -125,6 +130,7 @@ class JsonImporter:
             cwe=item.get("cwe"),
             evidence=item.get("evidence"),
             remediation=item.get("remediation"),
+            exploit_evidence=exploit_evidence,
             references=tuple(references),
             asset=asset,
             raw_data=item,

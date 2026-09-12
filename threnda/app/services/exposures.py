@@ -33,6 +33,67 @@ class ExposureChanges(TypedDict, total=False):
     remediation: str | None
 
 
+class InvalidStatusTransitionError(Exception):
+    """Raised when an update would move ``status`` along a forbidden edge.
+
+    See docs/risk-scoring.md's sibling doc, docs/implementation-plan.md
+    Milestone 4, for the full graph and the reasoning behind it.
+    """
+
+    def __init__(self, current: ExposureStatus, requested: ExposureStatus) -> None:
+        self.current = current
+        self.requested = requested
+        allowed = sorted(s.value for s in allowed_next_statuses(current))
+        super().__init__(
+            f"Cannot move an exposure from {current.value!r} to {requested.value!r}; "
+            f"allowed next status(es) from {current.value!r}: {allowed or 'none'}."
+        )
+
+
+# The canonical path is OPEN -> ACKNOWLEDGED -> IN_PROGRESS ->
+# RESOLVED/RISK_ACCEPTED, but every state before a closed one may also
+# jump straight to RESOLVED/RISK_ACCEPTED (skipping intermediate triage
+# steps is a real, common workflow — and forbidding it would regress the
+# web UI's existing bulk "mark in progress"/"accept risk" actions, both of
+# which apply to plain OPEN exposures). What the graph does forbid: moving
+# *backward* between active states without an explicit reopen
+# (ACKNOWLEDGED/IN_PROGRESS never go back to OPEN directly), and treating
+# a closed state as anything other than a dead end you explicitly reopen —
+# the only edge out of RESOLVED or RISK_ACCEPTED is back to OPEN.
+ALLOWED_STATUS_TRANSITIONS: dict[ExposureStatus, frozenset[ExposureStatus]] = {
+    ExposureStatus.OPEN: frozenset(
+        {
+            ExposureStatus.ACKNOWLEDGED,
+            ExposureStatus.IN_PROGRESS,
+            ExposureStatus.RISK_ACCEPTED,
+            ExposureStatus.RESOLVED,
+        }
+    ),
+    ExposureStatus.ACKNOWLEDGED: frozenset(
+        {ExposureStatus.IN_PROGRESS, ExposureStatus.RISK_ACCEPTED, ExposureStatus.RESOLVED}
+    ),
+    ExposureStatus.IN_PROGRESS: frozenset({ExposureStatus.RISK_ACCEPTED, ExposureStatus.RESOLVED}),
+    ExposureStatus.RISK_ACCEPTED: frozenset({ExposureStatus.OPEN}),
+    ExposureStatus.RESOLVED: frozenset({ExposureStatus.OPEN}),
+}
+
+#: Statuses a closed exposure reopens from — both audit as REOPENED, since
+#: the graph above guarantees OPEN is the only edge out of either.
+_CLOSED_STATUSES = frozenset({ExposureStatus.RESOLVED, ExposureStatus.RISK_ACCEPTED})
+
+
+def allowed_next_statuses(current: ExposureStatus) -> frozenset[ExposureStatus]:
+    """Statuses ``current`` may move to — used to both validate and to
+    build the web UI's status ``<select>`` so it never offers what the API
+    would refuse."""
+    return ALLOWED_STATUS_TRANSITIONS[current]
+
+
+def validate_status_transition(current: ExposureStatus, requested: ExposureStatus) -> None:
+    if requested not in allowed_next_statuses(current):
+        raise InvalidStatusTransitionError(current, requested)
+
+
 def apply_exposure_update(
     db: Session,
     exposure: Exposure,
@@ -52,11 +113,12 @@ def apply_exposure_update(
     if "status" in changes and changes["status"] != exposure.status:
         previous_status = exposure.status
         new_status = changes["status"]
+        validate_status_transition(previous_status, new_status)
         event_type = ExposureHistoryEventType.STATUS_CHANGED
         if new_status == ExposureStatus.RESOLVED:
             exposure.resolved_at = utcnow()
             event_type = ExposureHistoryEventType.RESOLVED
-        elif previous_status == ExposureStatus.RESOLVED:
+        elif previous_status in _CLOSED_STATUSES:
             exposure.resolved_at = None
             event_type = ExposureHistoryEventType.REOPENED
         exposure.status = new_status

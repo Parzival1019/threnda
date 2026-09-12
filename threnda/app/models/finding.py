@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
@@ -154,6 +155,22 @@ class Finding(Base):
     exposure_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     remediation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Milestone 4 risk-scoring input (threnda.app.services.risk_scoring):
+    # whether there is known evidence of exploitation for this finding.
+    # `None` = not reported. Populated only by Threnda's own generic JSON
+    # format's optional "exploit_evidence" key (docs/importers.md) — no
+    # public CSV/SARIF field maps to this, so CSV/SARIF never set it.
+    #
+    # `deferred=True`: this column is never needed by the hot-path
+    # `select(Finding)` queries in threnda.app.services.dedup.correlation
+    # (correlation matches on fingerprint/cve/asset, never on this), and
+    # excluding it from the implicit column list keeps those queries valid
+    # even when run by migration 32832b96f2c3's backfill step — which
+    # imports and selects the *current* ORM `Finding` class from a point in
+    # the upgrade sequence before this column's own migration has added it
+    # to the table. Explicitly `undefer()`/access `.exploit_evidence` where
+    # risk scoring actually needs it.
+    exploit_evidence: Mapped[bool | None] = mapped_column(Boolean, nullable=True, deferred=True)
     references: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     raw_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     first_seen: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
