@@ -10,6 +10,7 @@ non-fail-kind result that must be excluded.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -18,11 +19,16 @@ from threnda.app.services.ingestion.base import ImportFormatError
 from threnda.app.services.ingestion.sarif_importer import SarifImporter
 
 
-def _encode(document: dict) -> bytes:
+def _encode(document: dict[str, Any]) -> bytes:
     return json.dumps(document).encode("utf-8")
 
 
-def _run(*, rules=None, results=None, tool_name: str = "SyntheticTool") -> dict:
+def _run(
+    *,
+    rules: list[dict[str, Any]] | None = None,
+    results: list[dict[str, Any]] | None = None,
+    tool_name: str = "SyntheticTool",
+) -> dict[str, Any]:
     return {
         "tool": {"driver": {"name": tool_name, "rules": rules or []}},
         "results": results or [],
@@ -111,7 +117,7 @@ def test_kind_defaults_to_fail_when_omitted() -> None:
 
 
 def test_fingerprint_is_stable_across_different_line_numbers() -> None:
-    def make(line: int) -> dict:
+    def make(line: int) -> dict[str, Any]:
         return {
             "runs": [
                 _run(
@@ -162,7 +168,7 @@ def test_partial_fingerprints_are_preserved_verbatim_in_raw_data() -> None:
 
 
 def test_different_partial_fingerprints_yield_different_fingerprints() -> None:
-    def make(fp: str) -> dict:
+    def make(fp: str) -> dict[str, Any]:
         return {
             "runs": [
                 _run(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -11,7 +12,7 @@ from threnda.app.services.ingestion.base import ImportFormatError
 from threnda.app.services.ingestion.json_importer import JsonImporter
 
 
-def _encode(document: dict) -> bytes:
+def _encode(document: dict[str, Any]) -> bytes:
     return json.dumps(document).encode("utf-8")
 
 

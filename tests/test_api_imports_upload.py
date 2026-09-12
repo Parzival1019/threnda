@@ -59,7 +59,7 @@ def test_upload_csv_happy_path(client: TestClient, db_session: Session) -> None:
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id, "csv_mapping": json.dumps(CSV_MAPPING)},
+        data={"source_id": str(source_id), "csv_mapping": json.dumps(CSV_MAPPING)},
         files={"file": ("synthetic-vulnerabilities.csv", content, "text/csv")},
     )
 
@@ -87,7 +87,7 @@ def test_upload_json_happy_path(client: TestClient, db_session: Session) -> None
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={"file": ("synthetic-findings.json", content, "application/json")},
     )
 
@@ -104,7 +104,7 @@ def test_upload_sarif_happy_path(client: TestClient, db_session: Session) -> Non
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={"file": ("synthetic-scan.sarif.json", content, "application/sarif+json")},
     )
 
@@ -126,7 +126,7 @@ def test_upload_rejects_foreign_workspace_without_writing_anything(
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": other_workspace.id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={"file": ("f.json", b'{"findings": []}', "application/json")},
     )
 
@@ -143,7 +143,7 @@ def test_upload_rejects_unknown_source_id(client: TestClient, db_session: Sessio
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace.id},
-        data={"source_id": 999999},
+        data={"source_id": "999999"},
         files={"file": ("f.json", b'{"findings": []}', "application/json")},
     )
 
@@ -158,7 +158,7 @@ def test_malicious_filename_is_sanitized_not_used_as_a_path(
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={
             "file": (
                 "../../../../etc/passwd",
@@ -191,7 +191,7 @@ def test_malformed_json_records_a_failed_import_run_without_findings(
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={"file": ("broken.json", b"{not valid json", "application/json")},
     )
 
@@ -217,7 +217,7 @@ def test_content_not_matching_declared_source_type_is_rejected(
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id, "csv_mapping": json.dumps(CSV_MAPPING)},
+        data={"source_id": str(source_id), "csv_mapping": json.dumps(CSV_MAPPING)},
         files={
             "file": ("scan.sarif.json", b'{"runs": [{"tool": {"driver": {}}}]}', "application/json")
         },
@@ -241,7 +241,7 @@ def test_out_of_range_cvss_is_a_partial_success_with_row_errors(
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={"file": ("f.json", json.dumps(payload).encode(), "application/json")},
     )
 
@@ -262,7 +262,7 @@ def test_csv_upload_without_mapping_and_none_saved_is_rejected(
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={"file": ("f.csv", b"Vulnerability\r\nT\r\n", "text/csv")},
     )
 
@@ -279,7 +279,7 @@ def test_csv_mapping_is_saved_and_reused_on_a_later_upload(
     first = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id, "csv_mapping": json.dumps(CSV_MAPPING)},
+        data={"source_id": str(source_id), "csv_mapping": json.dumps(CSV_MAPPING)},
         files={"file": ("a.csv", content, "text/csv")},
     )
     assert first.status_code == 201, first.text
@@ -287,7 +287,7 @@ def test_csv_mapping_is_saved_and_reused_on_a_later_upload(
     second = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={"file": ("b.csv", content, "text/csv")},
     )
 
@@ -302,7 +302,7 @@ def test_csv_mapping_rejects_unknown_target_field(client: TestClient, db_session
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
         data={
-            "source_id": source_id,
+            "source_id": str(source_id),
             "csv_mapping": json.dumps({"Vulnerability": "title", "Extra": "not_a_real_field"}),
         },
         files={"file": ("f.csv", b"Vulnerability,Extra\r\nT,x\r\n", "text/csv")},
@@ -319,7 +319,7 @@ def test_upload_to_unsupported_source_type_is_rejected(
     response = client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
-        data={"source_id": source_id},
+        data={"source_id": str(source_id)},
         files={"file": ("f.json", b'{"findings": []}', "application/json")},
     )
 
@@ -342,8 +342,9 @@ def test_reopening_the_application_preserves_imported_data(tmp_path: Path) -> No
 
     content = (DEMO_DATA / "json" / "synthetic-findings.json").read_bytes()
 
-    with TestClient(create_app(settings=settings)) as first_client:
-        session = first_client.app.state.sessionmaker()
+    first_app = create_app(settings=settings)
+    with TestClient(first_app) as first_client:
+        session = first_app.state.sessionmaker()
         workspace = Workspace(name="synthetic-reopen")
         session.add(workspace)
         session.flush()
@@ -356,7 +357,7 @@ def test_reopening_the_application_preserves_imported_data(tmp_path: Path) -> No
         response = first_client.post(
             "/api/v1/imports",
             params={"workspace_id": workspace_id},
-            data={"source_id": source_id},
+            data={"source_id": str(source_id)},
             files={"file": ("f.json", content, "application/json")},
         )
         assert response.status_code == 201, response.text

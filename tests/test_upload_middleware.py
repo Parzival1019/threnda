@@ -7,6 +7,8 @@ the header is absent (as with chunked transfer encoding).
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -46,7 +48,7 @@ def test_body_over_limit_is_rejected_without_content_length_header() -> None:
     """A streaming/chunked body has no Content-Length at all — the limit
     must still be enforced from the actual bytes received."""
 
-    def body_stream():
+    def body_stream() -> Iterator[bytes]:
         for _ in range(20):
             yield b"x" * 100  # 2000 bytes total, over the 100-byte limit
 

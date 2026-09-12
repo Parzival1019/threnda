@@ -346,6 +346,56 @@ Acceptance criteria:
 - No web UI — provisioning and uploads are HTTP-API-only for now.
 - Still no authentication — `workspace_id` remains caller-supplied.
 
+### Independent review fixes (post-Milestone-2, pre-Milestone-3)
+
+Two more defects, reproduced independently against the Milestone 2 commit,
+fixed in a separate local commit:
+
+1. **The upload size limit returned 400, not the documented 413.**
+   Reproduced with a real running server (`uvicorn` + `curl`, not just
+   `TestClient`): with `THRENDA_MAX_UPLOAD_BYTES` set low, uploading a file
+   over the limit through the real multipart `POST /api/v1/imports` route
+   returned `400 There was an error parsing the body`. Root cause:
+   `fastapi/routing.py` wraps `await request.form()` in
+   `except Exception: raise HTTPException(400, ...)` — the middleware's
+   bespoke `MaxBodySizeExceeded` exception, raised from inside `receive()`
+   while FastAPI parses the multipart body, got caught by that handler and
+   turned into a generic 400 before it ever reached the middleware's own
+   `except` clause. FastAPI's code has one specific exemption from that
+   broad handler: `except HTTPException: raise` — it passes an
+   `HTTPException` through unchanged. Fixed by having
+   `MaxBodySizeMiddleware` raise `starlette.exceptions.HTTPException(413,
+   ...)` directly instead of a bespoke exception type; this is one of the
+   exception types guaranteed to survive FastAPI's own body-parsing error
+   handling and reach Starlette's built-in exception middleware, which
+   converts it into the correct response. Verified three ways: a real
+   `uvicorn`+`curl` reproduction (including a chunked-transfer request with
+   no `Content-Length` header) confirming `413` and zero database writes;
+   `tests/test_upload_size_limit_integration.py`, a genuine multipart
+   integration test against the real app and the real
+   `POST /api/v1/imports` route (not a minimal bare-`Request` ASGI app like
+   `tests/test_upload_middleware.py`), covering the exact reported
+   reproduction plus a hand-built multipart body with an understated
+   `Content-Length` and one with none at all; and the existing generic
+   ASGI-level tests, kept as-is since they're still valid lower-level
+   coverage of the middleware itself.
+2. **`mypy tests` was never actually checked.** `mypy threnda migrations`
+   (the command this plan's own acceptance criteria cite) is clean, but
+   nothing had ever run mypy over `tests/` — doing so found 24 errors
+   across 4 files: missing generic type arguments on bare `dict`
+   annotations, an untyped generator helper, `TestClient.data=` payloads
+   passing `int` where the stub expects `str`/`bytes`, and
+   `TestClient.app` (typed as a generic ASGI callable, not concretely
+   `FastAPI`) not exposing `.state`. Fixed at the root cause in every case
+   — explicit `dict[str, Any]`/`Iterator[bytes]` annotations, `str(...)`
+   around integer form fields (which is what actually gets sent over the
+   wire for a form field anyway), and threading a properly-typed `FastAPI`
+   app fixture through instead of reading `.state` off a `TestClient` —
+   not by adding `# type: ignore` comments or weakening any assertion.
+   The documented check command (`README.md`) is now `mypy threnda tests`,
+   and a plain `pip check` was added alongside it to catch a broken
+   dependency set.
+
 ## Milestone 3 — deduplication and exposures
 
 **Status: not started**

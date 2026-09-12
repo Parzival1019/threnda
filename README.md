@@ -38,11 +38,12 @@ alembic upgrade head
 uvicorn threnda.app.main:app --host 127.0.0.1 --port 8080
 # -> http://127.0.0.1:8080/api/v1/health, http://127.0.0.1:8080/docs
 
-# Tests, lint, types
+# Tests, lint, types, dependency sanity
 pytest
 ruff check .
 ruff format --check .
-mypy threnda
+mypy threnda tests
+pip check
 ```
 
 ### Importing a synthetic finding
