@@ -16,9 +16,23 @@ from sqlalchemy import Enum as SAEnum
 
 
 def sa_enum(enum_cls: type[enum.Enum], *, length: int = 50) -> SAEnum:
-    """Build a portable, value-based SQLAlchemy enum column type."""
+    """Build a portable, value-based SQLAlchemy enum column type.
+
+    ``create_constraint=True`` is required for ``native_enum=False`` to
+    actually emit a ``CHECK`` constraint. Without it, SQLAlchemy silently
+    stores the column as a plain unconstrained ``VARCHAR`` — the type is
+    documentation only, and raw SQL (or a bug in application code) can write
+    any string. This was reported in the Milestone 1 review as findings
+    accepting an arbitrary severity string.
+    """
     values_callable: Callable[[type[enum.Enum]], list[str]] = lambda obj: [e.value for e in obj]  # noqa: E731
-    return SAEnum(enum_cls, values_callable=values_callable, native_enum=False, length=length)
+    return SAEnum(
+        enum_cls,
+        values_callable=values_callable,
+        native_enum=False,
+        create_constraint=True,
+        length=length,
+    )
 
 
 class SeverityLevel(enum.StrEnum):
@@ -103,6 +117,7 @@ class ExposureHistoryEventType(enum.StrEnum):
     ACKNOWLEDGED = "acknowledged"
     OWNER_CHANGED = "owner_changed"
     REMEDIATION_DATE_CHANGED = "remediation_date_changed"
+    REMEDIATION_CHANGED = "remediation_changed"
     FINDING_CORRELATED = "finding_correlated"
     REOPENED = "reopened"
     RESOLVED = "resolved"

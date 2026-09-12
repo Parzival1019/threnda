@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from threnda.app.core.config import Settings
 
 
-def _enable_sqlite_foreign_keys(engine: Engine) -> None:
+def enable_sqlite_foreign_keys(engine: Engine) -> None:
     """Turn on SQLite foreign key enforcement for every new connection.
 
     SQLite parses and stores ``FOREIGN KEY`` clauses but does not enforce
@@ -44,7 +44,7 @@ def create_engine_from_settings(settings: Settings) -> Engine:
         connect_args["check_same_thread"] = False
 
     engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
-    _enable_sqlite_foreign_keys(engine)
+    enable_sqlite_foreign_keys(engine)
     return engine
 
 

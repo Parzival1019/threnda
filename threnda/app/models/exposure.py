@@ -11,8 +11,23 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    and_,  # noqa: F401 - referenced by name inside string primaryjoin exprs below
+)
+from sqlalchemy.orm import (
+    Mapped,
+    foreign,  # noqa: F401 - referenced by name inside string primaryjoin exprs
+    mapped_column,
+    relationship,
+)
 
 from threnda.app.db.base import Base
 from threnda.app.models.enums import ExposureStatus, SeverityLevel, sa_enum
@@ -29,6 +44,8 @@ class Exposure(Base):
     __tablename__ = "exposures"
     __table_args__ = (
         CheckConstraint("risk_score >= 0 AND risk_score <= 100", name="risk_score_range"),
+        # Lets Finding composite-FK to (workspace_id, id) — see Finding.
+        UniqueConstraint("workspace_id", "id", name="uq_exposures_workspace_id_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -58,7 +75,13 @@ class Exposure(Base):
     )
 
     workspace: Mapped[Workspace] = relationship(back_populates="exposures")
-    findings: Mapped[list[Finding]] = relationship(back_populates="exposure")
+    findings: Mapped[list[Finding]] = relationship(
+        back_populates="exposure",
+        primaryjoin=(
+            "and_(foreign(Finding.exposure_id) == Exposure.id, "
+            "Finding.workspace_id == Exposure.workspace_id)"
+        ),
+    )
     history: Mapped[list[ExposureHistory]] = relationship(
         back_populates="exposure",
         cascade="all, delete-orphan",

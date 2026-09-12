@@ -27,7 +27,10 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Apply the database schema (SQLite by default, see .env.example)
+# Apply the database schema (SQLite by default, see .env.example — the
+# default THRENDA_DATABASE_URL points at ./data/threnda.db, and SQLite
+# will not create that directory for you)
+mkdir -p data
 alembic upgrade head
 
 # Run the API (binds to localhost only)

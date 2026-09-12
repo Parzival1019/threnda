@@ -134,18 +134,23 @@ def update_exposure(
         )
         exposure.owner = changes["owner"]
 
+    # `acknowledged` and `status` are independent fields per the spec's
+    # Exposure model (status is the lifecycle stage; acknowledged is a
+    # simple flag) — this endpoint does not cross-derive one from the
+    # other, and both directions of the flag are audited the same way.
     if "acknowledged" in changes and changes["acknowledged"] != exposure.acknowledged:
-        exposure.acknowledged = changes["acknowledged"]
-        if exposure.acknowledged:
-            history.append(
-                ExposureHistory(
-                    exposure=exposure,
-                    event_type=ExposureHistoryEventType.ACKNOWLEDGED,
-                    previous_value="false",
-                    new_value="true",
-                    actor=actor,
-                )
+        previous_acknowledged = exposure.acknowledged
+        new_acknowledged = changes["acknowledged"]
+        history.append(
+            ExposureHistory(
+                exposure=exposure,
+                event_type=ExposureHistoryEventType.ACKNOWLEDGED,
+                previous_value=str(previous_acknowledged).lower(),
+                new_value=str(new_acknowledged).lower(),
+                actor=actor,
             )
+        )
+        exposure.acknowledged = new_acknowledged
 
     if "remediation_target_date" in changes and (
         changes["remediation_target_date"] != exposure.remediation_target_date
@@ -164,6 +169,15 @@ def update_exposure(
         exposure.remediation_target_date = new_date
 
     if "remediation" in changes and changes["remediation"] != exposure.remediation:
+        history.append(
+            ExposureHistory(
+                exposure=exposure,
+                event_type=ExposureHistoryEventType.REMEDIATION_CHANGED,
+                previous_value=exposure.remediation,
+                new_value=changes["remediation"],
+                actor=actor,
+            )
+        )
         exposure.remediation = changes["remediation"]
 
     if payload.note:
