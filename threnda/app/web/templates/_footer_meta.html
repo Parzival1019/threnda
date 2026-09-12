@@ -1,0 +1,2 @@
+v{{ app_version }} · {{ footer_source_count }} source{{ 's' if footer_source_count != 1 else '' }} ·
+{% if footer_last_import %}last import {{ footer_last_import | humanize_dt }}{% else %}no imports yet{% endif %}

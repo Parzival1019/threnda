@@ -1,0 +1,13 @@
+{# Out-of-band updates for the sidebar nav counts and footer meta line.
+
+Included by any htmx-fragment response (targeting something other than the
+whole page) whose action can change one of these counts — e.g. an upload
+changing the Imports count and "last import" footer text. htmx scans the
+whole response for `hx-swap-oob` elements and swaps each into the existing
+page by matching `id`, independently of the response's primary hx-target.
+Requires the same context `build_shell_context()` provides. #}
+<span id="nav-open-count" class="count" hx-swap-oob="true">{{ nav_open_count }}</span>
+<span id="nav-import-count" class="count" hx-swap-oob="true">{{ nav_import_count }}</span>
+<span id="nav-source-count" class="count" hx-swap-oob="true">{{ nav_source_count }}</span>
+<span id="nav-review-count" class="count" hx-swap-oob="true">{{ nav_review_count }}</span>
+<div id="footer-meta" class="meta" hx-swap-oob="true">{% include "_footer_meta.html" %}</div>

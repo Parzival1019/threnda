@@ -69,6 +69,52 @@ def test_json_upload_happy_path_lands_findings_in_the_queue(
     assert queue.status_code == 200
 
 
+def test_upload_result_carries_oob_updates_for_stale_sidebar_counts(
+    client: TestClient, db_session: Session
+) -> None:
+    """Regression test: a real-browser smoke test found that after a
+    successful htmx-driven import, the sidebar's "Imports" nav count and
+    the "last import" footer line kept showing their pre-upload values
+    (0 / "no imports yet") until the visitor navigated away and back —
+    because the result fragment only ever replaced `#import-wizard`, never
+    the sidebar/footer that live outside it. The result response must
+    carry out-of-band swaps for those elements so the shell is immediately
+    consistent with what it just did.
+    """
+    workspace_id = bootstrap_workspace(client)
+    source_id = _create_source(client, workspace_id, "web-json-oob", "json")
+
+    form = client.get("/imports/new")
+    token = extract_csrf(form.text)
+    content = (DEMO_DATA / "json" / "synthetic-findings.json").read_bytes()
+
+    # Confirm the pre-upload state actually is "0 imports / no imports yet",
+    # so this test would fail loudly if the seeded state ever changed.
+    assert 'id="nav-import-count">0<' in form.text
+    assert "no imports yet" in form.text
+
+    response = client.post(
+        "/imports/new",
+        data={"csrf_token": token, "source_id": str(source_id)},
+        files={"file": ("synthetic-findings.json", content, "application/json")},
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    body = response.text
+
+    assert 'id="nav-open-count" class="count" hx-swap-oob="true">3<' in body
+    assert 'id="nav-import-count" class="count" hx-swap-oob="true">1<' in body
+    assert 'id="nav-source-count" class="count" hx-swap-oob="true">1<' in body
+    assert 'id="nav-review-count" class="count" hx-swap-oob="true">0<' in body
+
+    footer_match = re.search(
+        r'<div id="footer-meta" class="meta" hx-swap-oob="true">(.*?)</div>', body, re.DOTALL
+    )
+    assert footer_match is not None
+    assert "no imports yet" not in footer_match.group(1)
+    assert "last import" in footer_match.group(1)
+
+
 def test_malformed_upload_shows_failure_without_writing_findings(
     client: TestClient, db_session: Session
 ) -> None:
