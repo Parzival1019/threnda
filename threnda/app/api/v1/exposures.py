@@ -8,17 +8,18 @@ behaviour the rest of the product (Milestone 4 onward) builds on.
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from threnda.app.api.deps import get_db
-from threnda.app.models.enums import ExposureHistoryEventType, ExposureStatus, SeverityLevel
+from threnda.app.models.enums import ExposureStatus, SeverityLevel
 from threnda.app.models.exposure import Exposure
-from threnda.app.models.exposure_history import ExposureHistory
-from threnda.app.models.mixins import utcnow
 from threnda.app.schemas.common import Page
 from threnda.app.schemas.exposure import ExposureRead, ExposureUpdate
+from threnda.app.services.exposures import ExposureChanges, apply_exposure_update
 
 router = APIRouter(prefix="/exposures", tags=["exposures"])
 
@@ -98,100 +99,6 @@ def update_exposure(
     db: Session = Depends(get_db),
 ) -> ExposureRead:
     exposure = _get_exposure_or_404(db, workspace_id, exposure_id)
-    changes = payload.model_dump(exclude_unset=True, exclude={"note"})
-    history: list[ExposureHistory] = []
-
-    if "status" in changes and changes["status"] != exposure.status:
-        previous_status = exposure.status
-        new_status = changes["status"]
-        event_type = ExposureHistoryEventType.STATUS_CHANGED
-        if new_status == ExposureStatus.RESOLVED:
-            exposure.resolved_at = utcnow()
-            event_type = ExposureHistoryEventType.RESOLVED
-        elif previous_status == ExposureStatus.RESOLVED:
-            exposure.resolved_at = None
-            event_type = ExposureHistoryEventType.REOPENED
-        exposure.status = new_status
-        history.append(
-            ExposureHistory(
-                exposure=exposure,
-                event_type=event_type,
-                previous_value=previous_status.value,
-                new_value=new_status.value,
-                actor=actor,
-            )
-        )
-
-    if "owner" in changes and changes["owner"] != exposure.owner:
-        history.append(
-            ExposureHistory(
-                exposure=exposure,
-                event_type=ExposureHistoryEventType.OWNER_CHANGED,
-                previous_value=exposure.owner,
-                new_value=changes["owner"],
-                actor=actor,
-            )
-        )
-        exposure.owner = changes["owner"]
-
-    # `acknowledged` and `status` are independent fields per the spec's
-    # Exposure model (status is the lifecycle stage; acknowledged is a
-    # simple flag) — this endpoint does not cross-derive one from the
-    # other, and both directions of the flag are audited the same way.
-    if "acknowledged" in changes and changes["acknowledged"] != exposure.acknowledged:
-        previous_acknowledged = exposure.acknowledged
-        new_acknowledged = changes["acknowledged"]
-        history.append(
-            ExposureHistory(
-                exposure=exposure,
-                event_type=ExposureHistoryEventType.ACKNOWLEDGED,
-                previous_value=str(previous_acknowledged).lower(),
-                new_value=str(new_acknowledged).lower(),
-                actor=actor,
-            )
-        )
-        exposure.acknowledged = new_acknowledged
-
-    if "remediation_target_date" in changes and (
-        changes["remediation_target_date"] != exposure.remediation_target_date
-    ):
-        previous_date = exposure.remediation_target_date
-        new_date = changes["remediation_target_date"]
-        history.append(
-            ExposureHistory(
-                exposure=exposure,
-                event_type=ExposureHistoryEventType.REMEDIATION_DATE_CHANGED,
-                previous_value=previous_date.isoformat() if previous_date else None,
-                new_value=new_date.isoformat() if new_date else None,
-                actor=actor,
-            )
-        )
-        exposure.remediation_target_date = new_date
-
-    if "remediation" in changes and changes["remediation"] != exposure.remediation:
-        history.append(
-            ExposureHistory(
-                exposure=exposure,
-                event_type=ExposureHistoryEventType.REMEDIATION_CHANGED,
-                previous_value=exposure.remediation,
-                new_value=changes["remediation"],
-                actor=actor,
-            )
-        )
-        exposure.remediation = changes["remediation"]
-
-    if payload.note:
-        history.append(
-            ExposureHistory(
-                exposure=exposure,
-                event_type=ExposureHistoryEventType.NOTE_ADDED,
-                previous_value=None,
-                new_value=payload.note,
-                actor=actor,
-            )
-        )
-
-    db.add_all(history)
-    db.flush()
-    db.refresh(exposure)
+    changes = cast(ExposureChanges, payload.model_dump(exclude_unset=True, exclude={"note"}))
+    apply_exposure_update(db, exposure, changes, note=payload.note, actor=actor)
     return ExposureRead.model_validate(exposure)

@@ -176,11 +176,11 @@ def test_sanitize_filename_falls_back_to_a_placeholder_when_empty_or_missing() -
     """httpx's own multipart encoder won't even construct a file part with
     an empty filename (it degrades to a plain form field), so this is
     exercised directly rather than through a full HTTP round trip."""
-    from threnda.app.api.v1.imports import _sanitize_filename
+    from threnda.app.services.ingestion.upload import sanitize_filename
 
-    assert _sanitize_filename(None) == "upload"
-    assert _sanitize_filename("") == "upload"
-    assert _sanitize_filename("   ") == "upload"
+    assert sanitize_filename(None) == "upload"
+    assert sanitize_filename("") == "upload"
+    assert sanitize_filename("   ") == "upload"
 
 
 def test_malformed_json_records_a_failed_import_run_without_findings(

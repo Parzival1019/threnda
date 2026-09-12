@@ -16,31 +16,18 @@ from sqlalchemy.orm import Session
 
 from threnda.app.api.deps import get_db
 from threnda.app.models.enums import PossibleDuplicateStatus
-from threnda.app.models.finding import Finding
-from threnda.app.models.mixins import utcnow
 from threnda.app.models.possible_duplicate import PossibleDuplicate
 from threnda.app.schemas.common import Page
 from threnda.app.schemas.possible_duplicate import PossibleDuplicateRead
-from threnda.app.services.dedup.correlation import (
-    create_standalone_exposure,
-    link_finding_to_exposure,
+from threnda.app.services.possible_duplicates import (
+    LinkedFindingMissingError,
+    PossibleDuplicateAlreadyResolvedError,
+    PossibleDuplicateNotFoundError,
+    resolve_keep_separate,
+    resolve_merge,
 )
 
 router = APIRouter(prefix="/possible-duplicates", tags=["possible-duplicates"])
-
-
-def _get_pending_or_404(
-    db: Session, workspace_id: int, possible_duplicate_id: int
-) -> PossibleDuplicate:
-    candidate = db.get(PossibleDuplicate, possible_duplicate_id)
-    if candidate is None or candidate.workspace_id != workspace_id:
-        raise HTTPException(status_code=404, detail="Possible duplicate not found")
-    if candidate.status != PossibleDuplicateStatus.PENDING:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Already resolved as {candidate.status.value!r}; nothing left to decide.",
-        )
-    return candidate
 
 
 @router.get("", response_model=Page[PossibleDuplicateRead])
@@ -81,18 +68,18 @@ def merge_possible_duplicate(
     db: Session = Depends(get_db),
 ) -> PossibleDuplicateRead:
     """Confirm the candidate: link the finding to the candidate exposure."""
-    candidate = _get_pending_or_404(db, workspace_id, possible_duplicate_id)
-    finding = db.get(Finding, candidate.finding_id)
-    if finding is None:
-        raise HTTPException(status_code=404, detail="The finding behind this candidate is gone")
-
-    link_finding_to_exposure(
-        db, finding, candidate.candidate_exposure_id, confidence="possible-merged", actor=actor
-    )
-    candidate.status = PossibleDuplicateStatus.MERGED
-    candidate.resolved_at = utcnow()
-    candidate.resolved_by = actor
-    db.flush()
+    try:
+        candidate = resolve_merge(
+            db, workspace_id=workspace_id, possible_duplicate_id=possible_duplicate_id, actor=actor
+        )
+    except PossibleDuplicateNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Possible duplicate not found") from exc
+    except PossibleDuplicateAlreadyResolvedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LinkedFindingMissingError as exc:
+        raise HTTPException(
+            status_code=404, detail="The finding behind this candidate is gone"
+        ) from exc
     return PossibleDuplicateRead.model_validate(candidate)
 
 
@@ -107,14 +94,16 @@ def keep_possible_duplicate_separate(
     db: Session = Depends(get_db),
 ) -> PossibleDuplicateRead:
     """Reject the candidate: give the finding its own standalone exposure."""
-    candidate = _get_pending_or_404(db, workspace_id, possible_duplicate_id)
-    finding = db.get(Finding, candidate.finding_id)
-    if finding is None:
-        raise HTTPException(status_code=404, detail="The finding behind this candidate is gone")
-
-    create_standalone_exposure(db, finding)
-    candidate.status = PossibleDuplicateStatus.KEPT_SEPARATE
-    candidate.resolved_at = utcnow()
-    candidate.resolved_by = actor
-    db.flush()
+    try:
+        candidate = resolve_keep_separate(
+            db, workspace_id=workspace_id, possible_duplicate_id=possible_duplicate_id, actor=actor
+        )
+    except PossibleDuplicateNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Possible duplicate not found") from exc
+    except PossibleDuplicateAlreadyResolvedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LinkedFindingMissingError as exc:
+        raise HTTPException(
+            status_code=404, detail="The finding behind this candidate is gone"
+        ) from exc
     return PossibleDuplicateRead.model_validate(candidate)
