@@ -215,6 +215,14 @@ class SarifImporter:
                 f"{key}={value}" for key, value in sorted(partial_fingerprints.items())
             )
 
+        # Preference order for the differential engine's source-local
+        # identity (see docs/deduplication.md): a producer's own
+        # partialFingerprints first, then rule+location, and only as a last
+        # resort a positional identity — which, like CSV's fallback, is
+        # unstable if the producer reorders `results[]` between runs. Real
+        # SARIF producers essentially always supply at least a `ruleId` and
+        # a location, so this branch is a true last resort for a malformed
+        # or unusually minimal document, not the common case.
         if fingerprint_material:
             source_finding_id = fingerprint_material
         elif rule_id and uri:

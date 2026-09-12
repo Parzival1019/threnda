@@ -10,6 +10,7 @@ follow.
 
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,8 +19,16 @@ from threnda.app.models.enums import SeverityLevel, SourceType
 from threnda.app.models.finding import Finding
 from threnda.app.models.source import Source
 from threnda.app.models.workspace import Workspace
-from threnda.app.services.ingestion.base import NormalizedAsset, NormalizedFinding, ParsedImport
-from threnda.app.services.ingestion.runner import persist_parsed_import
+from threnda.app.services.ingestion.base import (
+    DuplicateIdentityError,
+    NormalizedAsset,
+    NormalizedFinding,
+    ParsedImport,
+)
+from threnda.app.services.ingestion.runner import (
+    find_duplicate_source_finding_ids,
+    persist_parsed_import,
+)
 
 
 def _workspace_and_source(db: Session) -> tuple[int, int]:
@@ -264,3 +273,50 @@ def test_row_errors_are_counted_as_failed_records_not_dropped_silently(db_sessio
     assert run.failed_records == 1
     assert run.successful_records == 1
     assert run.total_records == 2
+
+
+def test_find_duplicate_source_finding_ids_reports_each_colliding_value_once() -> None:
+    findings = (
+        _finding(fingerprint="a", title="A"),
+        _finding(fingerprint="b", title="B"),
+        _finding(fingerprint="a", title="A again"),
+        _finding(fingerprint="a", title="A a third time"),
+    )
+
+    assert find_duplicate_source_finding_ids(findings) == ["a"]
+
+
+def test_find_duplicate_source_finding_ids_is_empty_when_all_unique() -> None:
+    findings = (_finding(fingerprint="a", title="A"), _finding(fingerprint="b", title="B"))
+
+    assert find_duplicate_source_finding_ids(findings) == []
+
+
+def test_duplicate_identity_in_one_import_writes_nothing(db_session: Session) -> None:
+    """The runner-level guard behind the HTTP-level regression in
+    tests/test_independent_milestone3_review.py: raised before the
+    ImportRun itself is created, so a caller that doesn't go through the
+    upload API (as this test doesn't) sees the same "nothing written"
+    guarantee."""
+    workspace_id, source_id = _workspace_and_source(db_session)
+    parsed = _parsed(
+        _finding(fingerprint="dup", title="First copy"),
+        _finding(fingerprint="dup", title="Second copy"),
+    )
+
+    with pytest.raises(DuplicateIdentityError):
+        persist_parsed_import(
+            db_session,
+            workspace_id=workspace_id,
+            source_id=source_id,
+            filename="f.json",
+            raw=b"1",
+            parsed=parsed,
+        )
+
+    findings = db_session.scalars(select(Finding).where(Finding.source_id == source_id)).all()
+    assert findings == []
+    from threnda.app.models.import_run import ImportRun
+
+    runs = db_session.scalars(select(ImportRun).where(ImportRun.source_id == source_id)).all()
+    assert runs == []

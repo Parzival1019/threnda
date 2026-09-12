@@ -4,27 +4,34 @@ Classifies every incoming normalized finding against the existing state of
 its ``(workspace, source)`` — see docs/community-v0.1-spec.md, "IMPORT
 DIFFERENTIALS" — and applies exactly one of:
 
-- **NEW** — no existing finding shares this fingerprint at all: create it,
-  and run it through the correlation engine
+- **NEW** — no existing finding shares this *source-local identity*
+  (``Finding.source_finding_id``, not ``fingerprint`` — see
+  docs/deduplication.md for why the two are kept separate) at all: create
+  it, and run it through the correlation engine
   (``threnda.app.services.dedup.correlation``) to decide which ``Exposure``
   it belongs to.
 - **UNCHANGED** / **UPDATED** — an *active* (not yet resolved) finding
-  already has this fingerprint: update its content in place if it
-  differs, refresh ``last_seen``. Never re-correlated — it already has
-  whatever ``exposure_id`` it was given when first created.
-- **REOPENED** — a *resolved* finding has this fingerprint: clear
-  ``resolved_at``, update content, refresh ``last_seen``. Still never
-  re-correlated, for the same reason.
+  already has this identity: update its content in place if it differs,
+  refresh ``last_seen``. Never re-correlated — it already has whatever
+  ``exposure_id`` it was given when first created.
+- **REOPENED** — a *resolved* finding has this identity: clear
+  ``resolved_at``, update content, refresh ``last_seen``, and audit it
+  against its linked exposure (``ExposureHistoryEventType.REOPENED``) if
+  it has one. Still never re-correlated, for the same reason.
 - **RESOLVED** — an active finding from a *previous* import of this source
-  was not present in this one: set ``resolved_at``. The row is never
-  deleted, and nothing about its ``Exposure`` is touched automatically —
-  see docs/deduplication.md for why (this is a deliberate Community/
-  Enterprise boundary, not an oversight).
+  was not present in this one: set ``resolved_at`` and audit it
+  (``ExposureHistoryEventType.RESOLVED``) if it has a linked exposure. The
+  row is never deleted, and nothing about its ``Exposure`` is touched
+  automatically — see docs/deduplication.md for why (this is a deliberate
+  Community/Enterprise boundary, not an oversight). Only inferred when this
+  import parsed with zero row errors: a row that failed to normalize never
+  reaches ``parsed.findings``, so its identity can't be told apart from
+  "genuinely gone" here — see the comment above the resolved-inference loop
+  below.
 
 Every successfully-parsed record lands in exactly one of NEW/UNCHANGED/
 UPDATED/REOPENED; the resulting counts, plus RESOLVED, are stored on the
-``ImportRun`` itself — that's "store this history" for the differential
-engine's purposes. Individually-invalid records (already filtered out by
+``ImportRun`` itself. Individually-invalid records (already filtered out by
 the importer into ``ParsedImport.errors``) are counted in
 ``failed_records`` as before and never silently dropped from the summary.
 """
@@ -37,16 +44,41 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from threnda.app.models.asset import Asset
-from threnda.app.models.enums import ImportStatus
+from threnda.app.models.enums import ExposureHistoryEventType, ImportStatus
+from threnda.app.models.exposure_history import ExposureHistory
 from threnda.app.models.finding import Finding
 from threnda.app.models.import_run import ImportRun
 from threnda.app.models.mixins import utcnow
 from threnda.app.services.dedup.correlation import correlate_new_finding
-from threnda.app.services.ingestion.base import NormalizedAsset, NormalizedFinding, ParsedImport
+from threnda.app.services.ingestion.base import (
+    DuplicateIdentityError,
+    NormalizedAsset,
+    NormalizedFinding,
+    ParsedImport,
+)
 
 
 def compute_file_hash(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def find_duplicate_source_finding_ids(findings: tuple[NormalizedFinding, ...]) -> list[str]:
+    """Identity values that appear more than once within one parsed import.
+
+    Two records sharing a ``source_finding_id`` inside the *same* upload
+    would otherwise both try to become "the" row for that identity and
+    collide on ``uq_findings_workspace_source_finding_id`` on the second
+    insert — the differential engine only tracks state *between* imports,
+    not duplicates *within* one. Returned in first-seen order, deduplicated,
+    for a readable error message.
+    """
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for finding in findings:
+        if finding.source_finding_id in seen and finding.source_finding_id not in duplicates:
+            duplicates.append(finding.source_finding_id)
+        seen.add(finding.source_finding_id)
+    return duplicates
 
 
 def _content_changed(finding: Finding, normalized: NormalizedFinding) -> bool:
@@ -59,6 +91,7 @@ def _content_changed(finding: Finding, normalized: NormalizedFinding) -> bool:
         or finding.cwe != normalized.cwe
         or finding.evidence != normalized.evidence
         or finding.remediation != normalized.remediation
+        or finding.fingerprint != normalized.fingerprint
         or list(finding.references) != list(normalized.references)
     )
 
@@ -66,7 +99,6 @@ def _content_changed(finding: Finding, normalized: NormalizedFinding) -> bool:
 def _apply_incoming_content(
     db: Session, finding: Finding, normalized: NormalizedFinding, workspace_id: int
 ) -> None:
-    finding.source_finding_id = normalized.source_finding_id
     finding.title = normalized.title
     finding.description = normalized.description
     finding.severity = normalized.severity
@@ -77,6 +109,11 @@ def _apply_incoming_content(
     finding.remediation = normalized.remediation
     finding.references = list(normalized.references)
     finding.raw_data = normalized.raw_data
+    # `fingerprint` (the cross-source correlation signal) is allowed to
+    # change with content — e.g. a title edit — precisely because it is
+    # *not* the differential engine's identity key. See finding.py's
+    # comment on uq_findings_workspace_source_finding_id.
+    finding.fingerprint = normalized.fingerprint
     finding.asset_id = (
         _get_or_create_asset(db, workspace_id, normalized.asset).id
         if normalized.asset is not None
@@ -105,6 +142,31 @@ def _get_or_create_asset(db: Session, workspace_id: int, normalized: NormalizedA
     return asset
 
 
+def _record_lifecycle_event(
+    db: Session, finding: Finding, event_type: ExposureHistoryEventType
+) -> None:
+    """Audit a RESOLVED/REOPENED transition against its linked exposure.
+
+    A finding can be RESOLVED or REOPENED while still unlinked (e.g. a
+    POSSIBLE-band candidate awaiting review that then disappears and
+    reappears across imports) — there is no exposure to audit against yet
+    in that case, so this is a no-op rather than an error. Aggregate
+    ``ImportRun`` counters alone can't answer "which finding changed in
+    this import" (docs/milestone-3-review.md, finding 5); this makes that
+    answerable per finding via the exposure's own audit trail.
+    """
+    if finding.exposure_id is None:
+        return
+    db.add(
+        ExposureHistory(
+            exposure_id=finding.exposure_id,
+            event_type=event_type,
+            new_value=f"finding_id={finding.id}",
+            actor="system",
+        )
+    )
+
+
 def persist_parsed_import(
     db: Session,
     *,
@@ -114,6 +176,14 @@ def persist_parsed_import(
     raw: bytes,
     parsed: ParsedImport,
 ) -> ImportRun:
+    duplicate_identities = find_duplicate_source_finding_ids(parsed.findings)
+    if duplicate_identities:
+        raise DuplicateIdentityError(
+            "This import contains more than one record with the same identity "
+            f"within this source: {duplicate_identities!r}. Each finding in a "
+            "single upload must have a unique identity within its source."
+        )
+
     now = utcnow()
     import_run = ImportRun(
         workspace_id=workspace_id,
@@ -135,19 +205,21 @@ def persist_parsed_import(
         .scalars()
         .all()
     )
-    active_by_fingerprint = {f.fingerprint: f for f in existing_for_source if f.resolved_at is None}
-    resolved_by_fingerprint = {
-        f.fingerprint: f for f in existing_for_source if f.resolved_at is not None
+    active_by_identity = {
+        f.source_finding_id: f for f in existing_for_source if f.resolved_at is None
+    }
+    resolved_by_identity = {
+        f.source_finding_id: f for f in existing_for_source if f.resolved_at is not None
     }
 
-    seen_fingerprints: set[str] = set()
+    seen_identities: set[str] = set()
     new_count = unchanged_count = updated_count = reopened_count = 0
 
     for normalized in parsed.findings:
-        seen_fingerprints.add(normalized.fingerprint)
+        seen_identities.add(normalized.source_finding_id)
 
-        if normalized.fingerprint in active_by_fingerprint:
-            finding = active_by_fingerprint[normalized.fingerprint]
+        if normalized.source_finding_id in active_by_identity:
+            finding = active_by_identity[normalized.source_finding_id]
             changed = _content_changed(finding, normalized)
             _apply_incoming_content(db, finding, normalized, workspace_id)
             finding.last_seen = now
@@ -158,12 +230,13 @@ def persist_parsed_import(
                 unchanged_count += 1
             continue
 
-        if normalized.fingerprint in resolved_by_fingerprint:
-            finding = resolved_by_fingerprint[normalized.fingerprint]
+        if normalized.source_finding_id in resolved_by_identity:
+            finding = resolved_by_identity[normalized.source_finding_id]
             _apply_incoming_content(db, finding, normalized, workspace_id)
             finding.resolved_at = None
             finding.last_seen = now
             finding.import_run_id = import_run.id
+            _record_lifecycle_event(db, finding, ExposureHistoryEventType.REOPENED)
             reopened_count += 1
             continue
 
@@ -197,11 +270,21 @@ def persist_parsed_import(
         correlate_new_finding(db, finding)
         new_count += 1
 
+    # An import with row errors proves nothing about absence: a record that
+    # failed to normalize never reaches `parsed.findings` at all, so its
+    # identity can't be told apart from "genuinely gone" here — inferring
+    # RESOLVED for every active identity this run didn't see would risk
+    # falsely resolving a finding whose only problem was a malformed row
+    # this time (docs/milestone-3-review.md, finding 3). Suppress the whole
+    # absence-based RESOLVED step for this run; the successfully-parsed
+    # records above are still fully processed either way.
     resolved_count = 0
-    for fingerprint, finding in active_by_fingerprint.items():
-        if fingerprint not in seen_fingerprints:
-            finding.resolved_at = now
-            resolved_count += 1
+    if not parsed.errors:
+        for identity, finding in active_by_identity.items():
+            if identity not in seen_identities:
+                finding.resolved_at = now
+                _record_lifecycle_event(db, finding, ExposureHistoryEventType.RESOLVED)
+                resolved_count += 1
 
     import_run.new_findings = new_count
     import_run.unchanged_findings = unchanged_count

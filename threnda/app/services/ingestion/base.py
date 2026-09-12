@@ -37,6 +37,22 @@ class ImportFormatError(Exception):
     """
 
 
+class DuplicateIdentityError(Exception):
+    """Raised when one parsed import contains two findings with the same
+    ``source_finding_id`` for the same source.
+
+    Handled identically to ``ImportFormatError`` by the upload API: recorded
+    as a ``FAILED`` ``ImportRun`` and reported as ``422``, never as a raw
+    database error. Detected before any ``Finding``/``ImportRun`` row is
+    written (see
+    ``threnda.app.services.ingestion.runner.find_duplicate_source_finding_ids``)
+    — the alternative, letting two colliding inserts hit
+    ``uq_findings_workspace_source_finding_id``, would surface as an
+    unhandled `IntegrityError` (a 500) and could leave a partially-written
+    import behind.
+    """
+
+
 @dataclass(frozen=True)
 class NormalizedAsset:
     """The asset a finding was found on, as extracted by an importer.

@@ -431,10 +431,13 @@ Acceptance criteria:
 - [x] Tests: fingerprint stability (`test_dedup_similarity.py`), each
       confidence tier including the shared-signal gate
       (`test_dedup_correlation.py`), full differential classification
-      (`test_differential_engine.py`), and the review-queue API including
+      (`test_differential_engine.py`), the review-queue API including
       workspace scoping and the double-resolution guard
-      (`test_api_possible_duplicates.py`).
-- [x] `pytest` (158 tests), `ruff check`, `ruff format --check`,
+      (`test_api_possible_duplicates.py`), CSV reorder/content-edit identity
+      stability (`test_csv_reorder_stability.py`), and the legacy-database
+      backfill migration including its idempotency guarantee
+      (`test_migration_backfill.py`).
+- [x] `pytest` (172 tests), `ruff check`, `ruff format --check`,
       `mypy threnda tests` (strict), `pip check` all clean.
 
 ### Design decisions made in this milestone
@@ -464,13 +467,15 @@ Acceptance criteria:
   candidates.** Every resolution is one explicit, individually-recorded
   `POST .../merge` or `POST .../keep-separate` call. This was an explicit,
   non-negotiable constraint for this milestone, not a design preference.
-- **`uq_findings_workspace_source_fingerprint` needed a pre-flight migration
-  check.** Milestone 2's importer never checked for existing fingerprints
+- **`uq_findings_workspace_source_finding_id` needed a pre-flight migration
+  check.** Milestone 2's importer never checked for existing identities
   before insert, so an existing database could already violate the new
   constraint. Migration `32832b96f2c3` runs a read-only
-  `_assert_no_duplicate_fingerprints()` check before any DDL and raises
-  cleanly (zero schema/data changes) if it finds any — the same pattern
-  used for the Milestone 1 constraint-safety fix.
+  `_assert_no_duplicate_source_finding_ids()` check before any DDL and
+  raises cleanly (zero schema/data changes) if it finds any — the same
+  pattern used for the Milestone 1 constraint-safety fix. (Originally named
+  and keyed on `fingerprint`; renamed as part of the independent-review
+  fixes below — see there for why.)
 - **`PossibleDuplicate` uses the same composite-FK-scoped-by-`workspace_id`
   pattern as every other cross-table reference in this schema**
   (`ForeignKeyConstraint` on `(workspace_id, finding_id)` and
@@ -493,6 +498,80 @@ Acceptance criteria:
   HTTP-API-only, same as the rest of Community so far (Milestone 5).
 - Still no authentication — `actor`/`resolved_by` remain caller-supplied
   strings, same caveat as `ExposureHistory.actor` since Milestone 1.
+
+### Independent review fixes (post-Milestone-3-first-cut)
+
+An independent review (`docs/milestone-3-review.md`), run against a real
+Milestone-2 database upgraded to Milestone 3 and real HTTP uploads (not
+just unit tests), found five defects. All five are fixed in a follow-up
+local commit; full design rationale for each is in
+`docs/deduplication.md`, "Independent review fixes":
+
+1. **Legacy findings never entered the queue.** Upgrading a real
+   Milestone-2 database with unlinked findings created no `Exposure` or
+   review candidate for any of them — `GET /exposures` couldn't see them
+   and neither could the review queue. Fixed by having migration
+   `32832b96f2c3` run every pre-existing unlinked finding through the same
+   `correlate_new_finding` a live import's new finding uses (deterministic
+   EXACT/HIGH auto-correlate, POSSIBLE creates a review candidate and is
+   never auto-merged, no signal gets a standalone exposure) — idempotent,
+   and never overwriting a finding that already has a link.
+2. **A stable source-local id didn't survive a title edit.** Two JSON
+   imports using the same explicit `id` but a changed title reported
+   `NEW=1, RESOLVED=1` instead of `UPDATED=1`, because the differential
+   engine matched on `fingerprint` — which importers legitimately bake
+   title into. Root-caused as two identities being conflated into one
+   field. Fixed by introducing a real split: `Finding.source_finding_id`
+   (source-local identity; what the differential engine matches on) versus
+   `Finding.fingerprint` (cross-source correlation signal; allowed to
+   change with content). The unique constraint moved from
+   `(workspace_id, source_id, fingerprint)` to
+   `(workspace_id, source_id, source_finding_id)`, named
+   `uq_findings_workspace_source_finding_id`. CSV's positional
+   `row-{index}` identity fallback was also replaced with a content-derived
+   one (same fields as `fingerprint`), since switching the differential
+   engine to match on `source_finding_id` would otherwise have made
+   reordering a re-exported CSV's rows look like a mass resolve+new — a
+   regression the old, accidentally-reorder-safe fingerprint-based matching
+   didn't have. Both fixes and the CSV trade-off are covered by
+   `tests/test_independent_milestone3_review.py` (reviewer-authored) and
+   `tests/test_csv_reorder_stability.py`.
+3. **A partially-erroring import could falsely resolve an untouched
+   finding.** A row that fails to normalize never reaches
+   `parsed.findings`, so its identity can't be told apart from "genuinely
+   absent" — treating every unseen active identity as RESOLVED whenever an
+   import had any row errors risked falsely resolving a finding whose only
+   problem was a malformed row that time. Fixed by suppressing the
+   absence-based RESOLVED step entirely for any run with `parsed.errors`
+   non-empty; successfully-parsed records in that same run are still fully
+   processed.
+4. **Duplicate identities inside one upload returned a raw HTTP 500.** Two
+   records sharing a `source_finding_id` in one file both tried to become
+   the row for that identity, and the second insert hit the unique
+   constraint as an unhandled `IntegrityError`. Fixed by checking for
+   intra-batch collisions (`find_duplicate_source_finding_ids`) before
+   `persist_parsed_import` writes anything at all, raising
+   `DuplicateIdentityError`; the upload API handles it exactly like a
+   whole-file `ImportFormatError` — a durable `FAILED` `ImportRun` and a
+   `422`, never a partial write.
+5. **Aggregate counters couldn't say which finding changed.**
+   `ImportRun.new_findings`/etc. answer "how many", not "which ones", and
+   `Finding.import_run_id`/`resolved_at` are overwritten on every
+   re-import. Fixed by auditing every RESOLVED/REOPENED transition against
+   the finding's linked exposure as an `ExposureHistory` entry
+   (`new_value="finding_id={id}"`), reusing the event types the model
+   already defined for this. A finding not yet linked to an exposure (still
+   pending POSSIBLE review) has nothing to audit against and is simply
+   skipped, not an error.
+
+Verification: full `pytest` (172 tests, up from 158), `ruff check`,
+`ruff format --check`, `mypy threnda tests` (strict), `pip check` all
+clean; plus a manual end-to-end pass against a real `uvicorn` server
+covering all five scenarios (a real Milestone-2-schema database migrated to
+head with a seeded unlinked finding appearing in `GET /exposures`; a real
+title-change JSON re-upload reporting `UPDATED`; a real duplicate-identity
+JSON upload returning `422` with a durable `FAILED` `ImportRun`, not a 500;
+and a real partially-erroring JSON re-upload reporting `resolved_findings=0`).
 
 ## Milestone 4 — workflow, history, risk scoring
 

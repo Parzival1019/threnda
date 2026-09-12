@@ -21,7 +21,7 @@ from threnda.app.models.import_run import ImportRun
 from threnda.app.models.source import Source
 from threnda.app.schemas.common import Page
 from threnda.app.schemas.import_run import ImportRowErrorRead, ImportRunRead, ImportUploadResult
-from threnda.app.services.ingestion.base import Importer, ImportFormatError
+from threnda.app.services.ingestion.base import DuplicateIdentityError, Importer, ImportFormatError
 from threnda.app.services.ingestion.csv_importer import CsvImporter
 from threnda.app.services.ingestion.json_importer import JsonImporter
 from threnda.app.services.ingestion.runner import compute_file_hash, persist_parsed_import
@@ -75,6 +75,42 @@ def _build_importer(source: Source, csv_mapping: dict[str, str] | None) -> Impor
             f"Uploads are not supported for source type {source.source_type.value!r} yet "
             f"(supported: {sorted(t.value for t in _SUPPORTED_SOURCE_TYPES)})."
         ),
+    )
+
+
+def _record_failed_import(
+    db: Session,
+    *,
+    workspace_id: int,
+    source_id: int,
+    filename: str,
+    raw: bytes,
+    detail: str,
+) -> JSONResponse:
+    """Record a durable ``FAILED`` ``ImportRun`` and report ``422``.
+
+    Shared by both ways a whole upload can be rejected: the file doesn't
+    parse as its declared format at all (``ImportFormatError``), or it
+    parses but contains two records claiming the same identity
+    (``DuplicateIdentityError``). Either way, no ``Finding`` row is ever
+    written — the caller gets an actionable, durable result instead of a
+    raw database error or a silently partial import.
+    """
+    failed_run = ImportRun(
+        workspace_id=workspace_id,
+        source_id=source_id,
+        filename=filename,
+        file_hash=compute_file_hash(raw),
+        status=ImportStatus.FAILED,
+    )
+    db.add(failed_run)
+    db.flush()
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": detail,
+            "import_run": ImportRunRead.model_validate(failed_run).model_dump(mode="json"),
+        },
     )
 
 
@@ -165,31 +201,36 @@ async def create_import(
         # a FAILED ImportRun (a real audit entry — not rolled back, since the
         # request handler returns normally rather than raising) and report
         # the failure without ever touching Finding/Asset rows.
-        failed_run = ImportRun(
+        return _record_failed_import(
+            db,
             workspace_id=workspace_id,
             source_id=source_id,
             filename=safe_filename,
-            file_hash=compute_file_hash(raw),
-            status=ImportStatus.FAILED,
-        )
-        db.add(failed_run)
-        db.flush()
-        return JSONResponse(
-            status_code=422,
-            content={
-                "detail": str(exc),
-                "import_run": ImportRunRead.model_validate(failed_run).model_dump(mode="json"),
-            },
+            raw=raw,
+            detail=str(exc),
         )
 
-    import_run = persist_parsed_import(
-        db,
-        workspace_id=workspace_id,
-        source_id=source_id,
-        filename=safe_filename,
-        raw=raw,
-        parsed=parsed,
-    )
+    try:
+        import_run = persist_parsed_import(
+            db,
+            workspace_id=workspace_id,
+            source_id=source_id,
+            filename=safe_filename,
+            raw=raw,
+            parsed=parsed,
+        )
+    except DuplicateIdentityError as exc:
+        # Same durable-failure treatment as an ImportFormatError above:
+        # persist_parsed_import raises this before writing anything, so
+        # there is nothing to roll back here either.
+        return _record_failed_import(
+            db,
+            workspace_id=workspace_id,
+            source_id=source_id,
+            filename=safe_filename,
+            raw=raw,
+            detail=str(exc),
+        )
 
     if parsed_mapping is not None and source.source_type == SourceType.CSV:
         updated_meta = dict(source.meta or {})

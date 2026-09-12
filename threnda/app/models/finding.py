@@ -92,14 +92,26 @@ class Finding(Base):
         ),
         # The import differential engine (Milestone 3) identifies "the same
         # finding, seen again" by looking up (workspace_id, source_id,
-        # fingerprint) — this constraint makes that identity a real database
-        # guarantee, not just an application convention: two rows for the
-        # same source can never silently coexist with the same fingerprint.
+        # source_finding_id) — the source-local identity an importer
+        # assigns (a producer-supplied id for JSON/SARIF; a documented
+        # content-derived fallback for CSV, see csv_importer.py). This is
+        # deliberately NOT `fingerprint`: fingerprint also feeds
+        # cross-source correlation (see
+        # threnda.app.services.dedup.correlation) and is allowed to change
+        # when identifying content changes (e.g. a title edit) — an
+        # importer that baked such a field into both would make a mere
+        # content edit look like "the old finding disappeared and a new
+        # one appeared" to the differential engine, which is exactly the
+        # bug this constraint's rename fixed (see
+        # docs/milestone-3-review.md, finding 2). This constraint makes the
+        # source-local identity a real database guarantee, not just an
+        # application convention: two rows for the same source can never
+        # silently coexist with the same identity.
         UniqueConstraint(
             "workspace_id",
             "source_id",
-            "fingerprint",
-            name="uq_findings_workspace_source_fingerprint",
+            "source_finding_id",
+            name="uq_findings_workspace_source_finding_id",
         ),
         # Lets PossibleDuplicate composite-FK to (workspace_id, id) — see
         # threnda.app.models.possible_duplicate.
@@ -110,9 +122,12 @@ class Finding(Base):
     workspace_id: Mapped[int] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # Layer-1 deterministic dedup key (see docs/community-v0.1-spec.md,
-    # "DEDUPLICATION"). Populated by the ingestion pipeline in Milestone 2/3;
-    # not yet computed by anything in Milestone 1.
+    # Cross-source correlation signal (see docs/community-v0.1-spec.md,
+    # "DEDUPLICATION" and docs/deduplication.md): Layer 1/2 use this to
+    # decide whether findings from *different* sources describe the same
+    # underlying issue. Not unique, and not the differential engine's
+    # identity key — see `source_finding_id` below and
+    # uq_findings_workspace_source_finding_id.
     fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     source_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     # Not part of the spec's minimum field list, added here because the
@@ -120,6 +135,14 @@ class Finding(Base):
     # observed a given finding. Nullable: a finding is not required to be
     # tied to a specific run at the model level.
     import_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    # Source-local stable identity: "the same finding, reported again by
+    # this exact source". This is what the import differential engine
+    # (threnda.app.services.ingestion.runner) matches on to decide NEW vs
+    # UNCHANGED/UPDATED vs REOPENED — never `fingerprint`, which is allowed
+    # to change when identifying content does (see the field above). Each
+    # importer documents how it derives this: JSON/SARIF prefer a
+    # producer-supplied id; CSV has none, so it falls back to a
+    # content-derived signature (see csv_importer.py).
     source_finding_id: Mapped[str] = mapped_column(String(300), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

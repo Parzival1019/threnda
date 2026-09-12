@@ -139,13 +139,13 @@ class CsvImporter:
         for index, row in enumerate(csv.DictReader(io.StringIO(text))):
             total += 1
             try:
-                findings.append(self._normalize_row(index, row))
+                findings.append(self._normalize_row(row))
             except ValueError as exc:
                 errors.append(RowError(index=index, message=str(exc)))
 
         return ParsedImport(findings=tuple(findings), errors=tuple(errors), total_records=total)
 
-    def _normalize_row(self, index: int, row: dict[str, str | None]) -> NormalizedFinding:
+    def _normalize_row(self, row: dict[str, str | None]) -> NormalizedFinding:
         values: dict[str, str] = {
             target: (row.get(column) or "").strip() for column, target in self.mapping.items()
         }
@@ -174,9 +174,21 @@ class CsvImporter:
             )
 
         cve = values.get("cve") or None
+        # CSV rows carry no producer-supplied identity (unlike JSON's "id"
+        # or SARIF's ruleId/partialFingerprints) — a positional `row-{index}`
+        # identity would treat a re-export with the same rows in a different
+        # order as N resolved + N new findings, which is wrong far more often
+        # than the alternative below is. The documented fallback is a
+        # content signature over the same identifying fields as
+        # `fingerprint`: stable across reordering and across re-imports of
+        # genuinely unchanged data, at the honest cost that editing a row's
+        # title/cve/asset in the CSV is indistinguishable from "resolved,
+        # then a new one appeared" — there is no external id to prove
+        # otherwise for this format. See docs/deduplication.md.
+        identity = compute_fingerprint(cve, asset.canonical_key if asset else None, title)
         return NormalizedFinding(
-            source_finding_id=f"row-{index}",
-            fingerprint=compute_fingerprint(cve, asset.canonical_key if asset else None, title),
+            source_finding_id=identity,
+            fingerprint=identity,
             title=title,
             severity=severity,
             description=values.get("description") or None,
