@@ -10,19 +10,22 @@ actually work through.
 
 > **Status: early development / pre-alpha.**
 > Milestones 1 (project foundation), 2 (ingestion), 3 (deduplication and
-> exposures) and 5 (web UI) are implemented and pending owner review: domain
-> models, SQLite persistence with Alembic migrations, workspace/source
-> provisioning, CSV/JSON/SARIF file upload, layered deduplication/
-> correlation with a manual-review queue for uncertain matches, an import
-> differential engine (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED), a
+> exposures), 4 (workflow and risk scoring) and 5 (web UI) are implemented
+> and pending owner review: domain models, SQLite persistence with Alembic
+> migrations, workspace/source provisioning, CSV/JSON/SARIF file upload,
+> layered deduplication/correlation with a manual-review queue for
+> uncertain matches, an import differential engine
+> (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED), server-enforced exposure
+> lifecycle transitions, a deterministic explainable risk score (0-100), a
 > local-development REST API, and a server-rendered Jinja2 + HTMX UI
-> (findings queue, exposure detail, imports, sources, review queue,
-> dashboard) all exist and are tested. There is still no risk scoring
-> (Milestone 4) and no authentication (Milestone 7) — the web UI's
+> (findings queue with risk filtering, exposure detail with a score
+> breakdown, imports, sources, review queue, dashboard) all exist and are
+> tested. There is still no authentication (Milestone 7) — the web UI's
 > workspace selection and CSRF protection are both plain browsing
 > conveniences, not access control. See
 > [docs/implementation-plan.md](docs/implementation-plan.md) for exact
-> scope and known limitations, and
+> scope and known limitations, [docs/risk-scoring.md](docs/risk-scoring.md)
+> for the scoring engine, and
 > [docs/deduplication.md](docs/deduplication.md) for the correlation/
 > differential design. Do not deploy this, and do not treat anything below
 > as a description of finished, production-ready functionality.

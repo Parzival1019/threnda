@@ -1,6 +1,7 @@
 <div id="queue-inner" class="table-wrap">
 <form id="filters-form" hx-get="/exposures" hx-target="#queue-inner" hx-swap="outerHTML"
-      hx-push-url="true" hx-trigger="change from:select" hx-include="#search-input">
+      hx-push-url="true" hx-trigger="change from:select, change from:input[type='number']"
+      hx-include="#search-input">
   <input type="hidden" name="workspace_id" value="{{ workspace.id }}">
   <div class="filter-bar">
     <span class="label">Filters</span>
@@ -21,6 +22,14 @@
       <option value="age" {% if sort == 'age' %}selected{% endif %}>Sort: oldest first</option>
       <option value="last_seen" {% if sort == 'last_seen' %}selected{% endif %}>Sort: last seen</option>
     </select>
+    <span class="mono" style="font-size:10.5px;color:var(--text-muted)">risk</span>
+    <input type="number" name="min_risk" value="{{ min_risk if min_risk is not none else '' }}"
+           min="0" max="100" placeholder="min" aria-label="Minimum risk score"
+           style="width:56px;appearance:none;border:1px solid var(--border);border-radius:4px;background:var(--bg-elevated);padding:4px 6px;font:400 10.5px var(--font-mono);color:var(--text-primary)">
+    <span class="mono" style="font-size:10.5px;color:var(--text-muted)">–</span>
+    <input type="number" name="max_risk" value="{{ max_risk if max_risk is not none else '' }}"
+           min="0" max="100" placeholder="max" aria-label="Maximum risk score"
+           style="width:56px;appearance:none;border:1px solid var(--border);border-radius:4px;background:var(--bg-elevated);padding:4px 6px;font:400 10.5px var(--font-mono);color:var(--text-primary)">
     <span class="spacer">
       <span class="mono" style="font-size:10.5px;color:var(--text-muted)">{{ total }} finding{{ '' if total == 1 else 's' }}</span>
       <a class="btn btn-ghost" href="/exposures?workspace_id={{ workspace.id }}">Reset</a>
@@ -44,6 +53,7 @@
     <span></span>
     <span>Finding</span>
     <span>Asset</span>
+    <span>Risk</span>
     <span class="col-wide">Owner</span>
     <span class="col-wide">Source</span>
     <span class="col-wide">Dup</span>
@@ -55,28 +65,7 @@
   <div class="table-body">
     {% if rows %}
       {% for row in rows %}
-      {% set exposure = row.exposure %}
-      <div class="row grid-row" id="row-{{ exposure.id }}" aria-selected="false"
-           hx-get="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}"
-           hx-target="#detail-panel" hx-swap="innerHTML">
-        <input type="checkbox" name="ids" value="{{ exposure.id }}" aria-label="Select finding {{ exposure.id }}"
-               onclick="event.stopPropagation()">
-        <span class="sev-icon {{ exposure.severity | severity_class }}">
-          <span class="shape" aria-hidden="true"></span>
-          <span class="word">{{ exposure.severity | severity_letter }}</span>
-        </span>
-        <span class="title-cell">
-          <span class="ref">EXP-{{ exposure.id }}</span>
-          <span class="title">{{ exposure.title }}</span>
-        </span>
-        <span class="cell-muted">{{ row.asset }}</span>
-        <span class="cell-muted col-wide">{{ exposure.owner or "—" }}</span>
-        <span class="cell-muted col-wide">{{ row.source }}</span>
-        <span class="cell-muted col-wide" style="text-align:center">{{ row.dup_count }}</span>
-        <span class="cell-muted col-wide">{{ exposure.last_seen | humanize_dt }}</span>
-        <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status.value.replace('_', ' ') }}</span>
-        <span class="cell-num">{{ exposure.first_seen | humanize_age }}</span>
-      </div>
+      {% include "exposures/_row.html" %}
       {% endfor %}
     {% elif ever_any == 0 %}
       <div class="first-run-card">

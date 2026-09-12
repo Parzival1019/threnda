@@ -384,14 +384,14 @@ textarea {
 
 .grid-row {
   display: grid;
-  grid-template-columns: 24px 44px minmax(0, 2.6fr) minmax(0, 1.2fr) minmax(0, 1fr) 90px 70px
+  grid-template-columns: 24px 44px minmax(0, 2.6fr) minmax(0, 1.2fr) 48px minmax(0, 1fr) 90px 70px
     minmax(0, 1fr) 92px 64px;
   align-items: center;
   gap: 10px;
 }
 @media (max-width: 900px) {
   .grid-row {
-    grid-template-columns: 24px 44px minmax(0, 2fr) minmax(0, 1fr) 92px 64px;
+    grid-template-columns: 24px 44px minmax(0, 2fr) minmax(0, 1fr) 48px 92px 64px;
   }
   .grid-row .col-wide {
     display: none;
@@ -563,6 +563,18 @@ input[type="checkbox"]:checked + .checkbox,
 .status-pill.status-risk_accepted {
   color: var(--high);
   border-color: var(--high);
+}
+
+.risk-value {
+  font: 500 11.5px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.risk-value.risk-high {
+  color: var(--critical);
+}
+.risk-value.risk-medium {
+  color: var(--high);
 }
 
 /* ---------------------------------------------------------- empty states */

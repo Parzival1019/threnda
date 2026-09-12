@@ -52,9 +52,21 @@ def humanize_dt(value: datetime | None) -> str:
     return value.strftime("%d %b %Y %H:%M")
 
 
+def risk_class(score: int) -> str:
+    """CSS modifier for a risk score badge — purely a display tier, not a
+    scoring input (see threnda.app.services.risk_scoring for the real
+    thresholds)."""
+    if score >= 70:
+        return "risk-high"
+    if score >= 40:
+        return "risk-medium"
+    return ""
+
+
 def register_filters(env: Environment) -> None:
     env.filters["severity_class"] = severity_class
     env.filters["severity_letter"] = severity_letter
     env.filters["status_class"] = status_class
     env.filters["humanize_age"] = humanize_age
     env.filters["humanize_dt"] = humanize_dt
+    env.filters["risk_class"] = risk_class

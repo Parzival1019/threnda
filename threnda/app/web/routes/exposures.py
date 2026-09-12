@@ -22,12 +22,24 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from threnda.app.api.deps import get_db
-from threnda.app.models.enums import ExposureStatus, PossibleDuplicateStatus, SeverityLevel
+from threnda.app.models.asset import Asset
+from threnda.app.models.enums import (
+    AssetCriticality,
+    ExposureStatus,
+    PossibleDuplicateStatus,
+    SeverityLevel,
+)
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.finding import Finding
 from threnda.app.models.possible_duplicate import PossibleDuplicate
 from threnda.app.models.workspace import Workspace
-from threnda.app.services.exposures import ExposureChanges, apply_exposure_update
+from threnda.app.services.exposures import (
+    ExposureChanges,
+    InvalidStatusTransitionError,
+    allowed_next_statuses,
+    apply_exposure_update,
+)
+from threnda.app.services.risk_scoring import compute_risk_score
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
 from threnda.app.web.deps import build_shell_context, get_current_workspace, templates
 
@@ -39,7 +51,7 @@ router = APIRouter(prefix="/exposures", tags=["web-exposures"])
 ACTOR = "web"
 
 PAGE_SIZE = 50
-DetailTab = Literal["evidence", "identity", "timeline", "remediation"]
+DetailTab = Literal["evidence", "identity", "timeline", "remediation", "risk"]
 
 _SORT_COLUMNS: dict[str, Any] = {
     "risk": Exposure.risk_score.desc(),
@@ -62,6 +74,8 @@ def _filtered_query(
     severity: SeverityLevel | None,
     owner: str | None,
     q: str | None,
+    min_risk: int | None = None,
+    max_risk: int | None = None,
 ) -> Select[tuple[Exposure]]:
     stmt = select(Exposure).where(Exposure.workspace_id == workspace_id)
     if status is not None:
@@ -72,6 +86,10 @@ def _filtered_query(
         stmt = stmt.where(Exposure.owner == owner)
     if q:
         stmt = stmt.where(Exposure.title.ilike(f"%{q}%"))
+    if min_risk is not None:
+        stmt = stmt.where(Exposure.risk_score >= min_risk)
+    if max_risk is not None:
+        stmt = stmt.where(Exposure.risk_score <= max_risk)
     return stmt
 
 
@@ -111,13 +129,21 @@ def queue(
     severity: SeverityLevel | None = None,
     owner: str | None = None,
     q: str | None = None,
+    min_risk: int | None = None,
+    max_risk: int | None = None,
     sort: str = "risk",
     offset: int = 0,
     workspace: Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db),
 ) -> Response:
     filtered = _filtered_query(
-        workspace_id=workspace.id, status=status, severity=severity, owner=owner, q=q
+        workspace_id=workspace.id,
+        status=status,
+        severity=severity,
+        owner=owner,
+        q=q,
+        min_risk=min_risk,
+        max_risk=max_risk,
     )
     total = db.execute(select(func.count()).select_from(filtered.subquery())).scalar_one()
 
@@ -151,6 +177,8 @@ def queue(
         "severity": severity,
         "owner": owner,
         "q": q,
+        "min_risk": min_risk,
+        "max_risk": max_risk,
         "sort": sort,
         "statuses": list(ExposureStatus),
         "severities": list(SeverityLevel),
@@ -169,17 +197,28 @@ def close_panel(workspace: Workspace = Depends(get_current_workspace)) -> HTMLRe
     return HTMLResponse('<div class="panel-placeholder">Select a finding to see its detail.</div>')
 
 
-@router.get("/{exposure_id}/panel")
-def detail_panel(
+def _linked_assets(exposure: Exposure) -> list[Asset]:
+    """Distinct assets linked through this exposure's findings.
+
+    Used by the Risk tab's per-asset edit forms — an exposure usually
+    correlates findings on one asset, but the model allows more.
+    """
+    seen: dict[int, Asset] = {}
+    for finding in exposure.findings:
+        if finding.asset is not None:
+            seen[finding.asset.id] = finding.asset
+    return list(seen.values())
+
+
+def _panel_context(
     request: Request,
-    exposure_id: int,
-    tab: DetailTab = "evidence",
-    workspace: Workspace = Depends(get_current_workspace),
-    db: Session = Depends(get_db),
-) -> Response:
-    exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
-    findings = list(exposure.findings)
-    history = list(exposure.history)
+    db: Session,
+    workspace: Workspace,
+    exposure: Exposure,
+    *,
+    tab: DetailTab,
+    error: str | None = None,
+) -> dict[str, object]:
     pending_duplicate = db.execute(
         select(PossibleDuplicate)
         .where(
@@ -190,20 +229,61 @@ def detail_panel(
         .limit(1)
     ).scalar_one_or_none()
 
-    token = get_csrf_token(request)
-    context = {
+    return {
         "exposure": exposure,
-        "findings": findings,
-        "history": history,
+        "findings": list(exposure.findings),
+        "history": list(exposure.history),
         "pending_duplicate": pending_duplicate,
         "tab": tab,
-        "csrf_token": token,
+        "csrf_token": get_csrf_token(request),
         "workspace": workspace,
         "statuses": list(ExposureStatus),
+        "allowed_statuses": sorted(allowed_next_statuses(exposure.status), key=lambda s: s.value),
+        "risk_result": compute_risk_score(exposure),
+        "linked_assets": _linked_assets(exposure),
+        "criticalities": list(AssetCriticality),
+        "error": error,
     }
-    response = templates.TemplateResponse(request, "exposures/_detail_panel.html", context)
+
+
+def _render_detail_panel(
+    request: Request,
+    db: Session,
+    workspace: Workspace,
+    exposure: Exposure,
+    *,
+    tab: DetailTab,
+    error: str | None = None,
+    sync_row: bool = False,
+) -> Response:
+    """Render the detail panel; optionally an out-of-band refresh of its
+    queue row too (``sync_row``) — used after a write that could change
+    what the row displays (status pill, risk score), so the panel and the
+    queue behind it never show inconsistent state without a full reload.
+    """
+    context = _panel_context(request, db, workspace, exposure, tab=tab, error=error)
+    template = "exposures/_detail_panel.html"
+    if sync_row:
+        context["row"] = _row_view(exposure)
+        context["oob"] = True
+        template = "exposures/_panel_and_row_oob.html"
+
+    token = get_csrf_token(request)
+    response = templates.TemplateResponse(request, template, context)
     apply_csrf_cookie(request, response, token)
     return response
+
+
+@router.get("/{exposure_id}/panel")
+def detail_panel(
+    request: Request,
+    exposure_id: int,
+    tab: DetailTab = "evidence",
+    workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> Response:
+    exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
+    return _render_detail_panel(request, db, workspace, exposure, tab=tab)
 
 
 @router.post("/bulk")
@@ -236,7 +316,15 @@ def bulk_update(
         exposure = db.get(Exposure, exposure_id)
         if exposure is None or exposure.workspace_id != workspace.id:
             continue
-        apply_exposure_update(db, exposure, changes, note=None, actor=ACTOR)
+        try:
+            apply_exposure_update(db, exposure, changes, note=None, actor=ACTOR)
+        except InvalidStatusTransitionError:
+            # A bulk action names one target status for every selected
+            # exposure; one of them not being able to make that specific
+            # move (e.g. already RESOLVED) skips just that one rather than
+            # failing the whole batch — same "skip what doesn't apply"
+            # policy as the line above for a foreign-workspace id.
+            continue
 
     query = (
         f"{return_qs}&workspace_id={workspace.id}" if return_qs else f"workspace_id={workspace.id}"
@@ -279,6 +367,11 @@ def update_exposure(
     if remediation is not None:
         changes["remediation"] = remediation.strip() or None
 
-    apply_exposure_update(db, exposure, changes, note=(note.strip() if note else None), actor=ACTOR)
+    try:
+        apply_exposure_update(
+            db, exposure, changes, note=(note.strip() if note else None), actor=ACTOR
+        )
+    except InvalidStatusTransitionError as exc:
+        return _render_detail_panel(request, db, workspace, exposure, tab=tab, error=str(exc))
 
-    return detail_panel(request, exposure_id, tab=tab, workspace=workspace, db=db)
+    return _render_detail_panel(request, db, workspace, exposure, tab=tab, sync_row=True)

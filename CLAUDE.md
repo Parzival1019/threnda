@@ -161,29 +161,37 @@ the project as MIT, Apache, GPL or anything else until the owner decides.
 ## Current state
 
 Milestones 1 (project foundation), 2 (ingestion), 3 (deduplication and
-exposures) and 5 (web UI) are implemented and pending owner review: app
-factory/configuration, SQLAlchemy 2 models for the full domain (Workspace,
-Source, ImportRun, Asset, Finding, Exposure, ExposureHistory,
-PossibleDuplicate) with workspace-scoped composite foreign keys and
-DB-enforced enums, SQLite persistence with foreign keys enforced, Alembic
-migrations verified with upgrade/downgrade round trips, Pydantic v2
-schemas, and a local-development API: `/api/v1/health`,
-`/api/v1/workspaces`, `/api/v1/sources` (incl. creation),
-`/api/v1/exposures` (incl. `PATCH`), `/api/v1/imports` (incl. file
-upload), `/api/v1/assets`, `/api/v1/possible-duplicates`
+exposures), 4 (workflow and risk scoring) and 5 (web UI) are implemented
+and pending owner review: app factory/configuration, SQLAlchemy 2 models
+for the full domain (Workspace, Source, ImportRun, Asset, Finding,
+Exposure, ExposureHistory, PossibleDuplicate) with workspace-scoped
+composite foreign keys and DB-enforced enums, SQLite persistence with
+foreign keys enforced, Alembic migrations verified with upgrade/downgrade
+round trips, Pydantic v2 schemas, and a local-development API:
+`/api/v1/health`, `/api/v1/workspaces`, `/api/v1/sources` (incl.
+creation), `/api/v1/exposures` (incl. `PATCH`, server-enforced lifecycle
+transitions, and a risk-score breakdown on the detail route),
+`/api/v1/imports` (incl. file upload), `/api/v1/assets` (incl. `PATCH`
+for the two manual risk-scoring fields), `/api/v1/possible-duplicates`
 (list/merge/keep-separate). CSV, generic JSON and SARIF 2.1.0 file uploads
 work end to end through the real HTTP API and run through a layered
 deduplication/correlation engine plus an import differential engine
-(NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED). A server-rendered Jinja2 +
-HTMX web UI (`threnda/app/web/`) covers the findings queue with its
-exposure detail panel, imports (including a CSV column-mapping wizard),
-sources, the possible-duplicate review queue, and a minimal dashboard,
-with CSRF protection (double-submit cookie) on every state-changing form.
-See docs/implementation-plan.md for exact scope, decisions and known
-limitations, docs/importers.md for the ingestion contract, and
-docs/deduplication.md for the correlation/differential design.
+(NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED). A deterministic, explainable,
+rule-based risk-scoring engine (`threnda/app/services/risk_scoring.py`,
+no AI) scores every exposure 0-100 from severity/CVSS/asset
+environment/internet exposure/exploit evidence/business
+criticality/finding age. A server-rendered Jinja2 + HTMX web UI
+(`threnda/app/web/`) covers the findings queue (with risk-score
+filtering) with its exposure detail panel (including a Risk tab), imports
+(including a CSV column-mapping wizard), sources, the possible-duplicate
+review queue, and a minimal dashboard, with CSRF protection
+(double-submit cookie) on every state-changing form. See
+docs/implementation-plan.md for exact scope, decisions and known
+limitations, docs/importers.md for the ingestion contract,
+docs/deduplication.md for the correlation/differential design, and
+docs/risk-scoring.md for the scoring engine.
 
-There is still no risk scoring and no authentication — Milestones 4, 6 and
-7 have not started. The web UI's workspace selection and CSRF token are
-both browsing conveniences, not access control, until Milestone 7 lands.
-This is local-development-only; do not deploy it.
+There is still no authentication — Milestones 6 and 7 have not started.
+The web UI's workspace selection and CSRF token are both browsing
+conveniences, not access control, until Milestone 7 lands. This is
+local-development-only; do not deploy it.

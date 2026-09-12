@@ -3,6 +3,7 @@
     <span class="sev-icon {{ exposure.severity | severity_class }}"><span class="shape" aria-hidden="true"></span></span>
     <span class="mono" style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary)">{{ exposure.severity.value }}</span>
     <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status.value.replace('_', ' ') }}</span>
+    <span class="risk-value {{ exposure.risk_score | risk_class }}" title="Risk score">{{ risk_result.total }}</span>
     <a data-close class="btn btn-ghost" style="margin-left:auto"
        hx-get="/exposures/panel/close?workspace_id={{ workspace.id }}"
        hx-target="#detail-panel" hx-swap="innerHTML" aria-label="Close detail panel">esc</a>
@@ -12,7 +13,7 @@
 </div>
 
 <div class="panel-tabs">
-  {% for t in ["evidence", "identity", "timeline", "remediation"] %}
+  {% for t in ["evidence", "identity", "risk", "timeline", "remediation"] %}
   <a class="panel-tab" aria-current="{{ 'true' if tab == t else 'false' }}"
      hx-get="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}&tab={{ t }}"
      hx-target="#detail-panel" hx-swap="innerHTML"
@@ -21,6 +22,9 @@
 </div>
 
 <div class="panel-body">
+  {% if error %}
+  <div class="error-banner" role="alert">{{ error }}</div>
+  {% endif %}
   {% if tab == "evidence" %}
     <div>
       <div class="section-label">Linked findings ({{ findings | length }})</div>
@@ -65,6 +69,64 @@
       <div><div class="label">Owner</div><div class="value">{{ exposure.owner or "—" }}</div></div>
     </div>
     <div class="mono" style="font-size:11px;color:var(--text-muted)">the fingerprint is what survives a re-import — findings that no longer share it correlate elsewhere instead</div>
+
+  {% elif tab == "risk" %}
+    <div>
+      <div class="section-label">Score breakdown</div>
+      <div class="card" style="margin-top:8px">
+        {% for component in risk_result.components %}
+        <div class="card-row">
+          <span class="k" style="width:auto;flex:1">{{ component.label }}</span>
+          <span class="v mono" title="{{ component.detail }}">{{ component.detail }}</span>
+          <span class="mono" style="width:44px;text-align:right;flex:none;color:{{ 'var(--critical)' if component.points > 0 else ('var(--positive)' if component.points < 0 else 'var(--text-muted)') }}">{{ "%+d"|format(component.points) }}</span>
+        </div>
+        {% endfor %}
+        <div class="card-row">
+          <span class="k" style="width:auto;flex:1;font-weight:600">Total</span>
+          <span class="risk-value {{ risk_result.total | risk_class }}" style="font-size:14px">{{ risk_result.total }}</span>
+        </div>
+      </div>
+      <div class="mono" style="margin-top:8px;font-size:10.5px;color:var(--text-muted)">deterministic, rule-based — see docs/risk-scoring.md. Recomputed on every relevant change; this view always reflects the current inputs.</div>
+    </div>
+
+    {% if linked_assets %}
+    <div>
+      <div class="section-label">Linked asset{{ '' if linked_assets|length == 1 else 's' }}</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:10px">
+        {% for asset in linked_assets %}
+        <form method="post" action="/assets/{{ asset.id }}"
+              hx-post="/assets/{{ asset.id }}" hx-target="#detail-panel" hx-swap="innerHTML"
+              class="kv-block" style="display:flex;flex-direction:column;gap:8px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="exposure_id" value="{{ exposure.id }}">
+          <input type="hidden" name="tab" value="risk">
+          <div><span class="k">asset</span> {{ asset.name }}</div>
+          <div><span class="k">environment</span> {{ asset.environment.value }}</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <label class="mono" style="font-size:10px;color:var(--text-muted)" for="crit-{{ asset.id }}">business criticality</label>
+            <select id="crit-{{ asset.id }}" name="business_criticality" style="flex:1;min-width:120px;appearance:none;border:1px solid var(--border);border-radius:5px;background:var(--bg-panel);padding:5px 8px;font:400 11px var(--font-mono);color:var(--text-primary)">
+              {% for c in criticalities %}
+              <option value="{{ c.value }}" {% if asset.business_criticality == c %}selected{% endif %}>{{ c.value }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <label class="mono" style="font-size:10px;color:var(--text-muted)" for="internet-{{ asset.id }}">internet-facing</label>
+            <select id="internet-{{ asset.id }}" name="internet_facing" style="flex:1;min-width:120px;appearance:none;border:1px solid var(--border);border-radius:5px;background:var(--bg-panel);padding:5px 8px;font:400 11px var(--font-mono);color:var(--text-primary)">
+              <option value="" {% if asset.internet_facing is none %}selected{% endif %}>not known</option>
+              <option value="true" {% if asset.internet_facing == true %}selected{% endif %}>yes</option>
+              <option value="false" {% if asset.internet_facing == false %}selected{% endif %}>no</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-secondary" style="align-self:flex-start">Save</button>
+        </form>
+        {% endfor %}
+      </div>
+      <div class="mono" style="margin-top:8px;font-size:10.5px;color:var(--text-muted)">both fields are manual — no importer can set them (see docs/risk-scoring.md)</div>
+    </div>
+    {% else %}
+    <p style="color:var(--text-muted);font-size:12px">No asset is linked through this exposure's findings yet, so there's nothing to set business criticality or internet exposure on.</p>
+    {% endif %}
 
   {% elif tab == "timeline" %}
     <div>
@@ -111,11 +173,12 @@
       <label for="status-select">Status</label>
       <div style="display:flex;gap:8px">
         <select id="status-select" name="status" style="flex:1;appearance:none;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);padding:8px 10px;font:400 12px var(--font-mono);color:var(--text-primary)">
-          {% for s in statuses %}
-          <option value="{{ s.value }}" {% if exposure.status == s %}selected{% endif %}>{{ s.value.replace('_', ' ') }}</option>
+          <option value="{{ exposure.status.value }}" selected>{{ exposure.status.value.replace('_', ' ') }} (current)</option>
+          {% for s in allowed_statuses %}
+          <option value="{{ s.value }}">{{ s.value.replace('_', ' ') }}</option>
           {% endfor %}
         </select>
-        <button type="submit" class="btn btn-secondary">Update</button>
+        <button type="submit" class="btn btn-secondary" {% if not allowed_statuses %}disabled{% endif %}>Update</button>
       </div>
     </form>
 
