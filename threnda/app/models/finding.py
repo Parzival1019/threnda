@@ -19,6 +19,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     and_,  # noqa: F401 - referenced by name inside string primaryjoin exprs below
 )
 from sqlalchemy.orm import (
@@ -89,6 +90,20 @@ class Finding(Base):
             ["exposures.workspace_id", "exposures.id"],
             name="fk_findings_workspace_exposure",
         ),
+        # The import differential engine (Milestone 3) identifies "the same
+        # finding, seen again" by looking up (workspace_id, source_id,
+        # fingerprint) — this constraint makes that identity a real database
+        # guarantee, not just an application convention: two rows for the
+        # same source can never silently coexist with the same fingerprint.
+        UniqueConstraint(
+            "workspace_id",
+            "source_id",
+            "fingerprint",
+            name="uq_findings_workspace_source_fingerprint",
+        ),
+        # Lets PossibleDuplicate composite-FK to (workspace_id, id) — see
+        # threnda.app.models.possible_duplicate.
+        UniqueConstraint("workspace_id", "id", name="uq_findings_workspace_id_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -120,6 +135,13 @@ class Finding(Base):
     raw_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     first_seen: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
+    # Set by the Milestone 3 differential engine when a repeat import of
+    # this finding's source no longer reports it; cleared (back to `None`)
+    # if it reappears in a later import ("reopened"). Distinct from
+    # `Exposure.status` (RESOLVED is a user workflow decision there) — this
+    # tracks what the *source data* says, not what a user decided to do
+    # about it.
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utcnow, onupdate=utcnow, nullable=False

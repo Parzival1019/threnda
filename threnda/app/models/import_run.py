@@ -71,6 +71,18 @@ class ImportRun(Base):
     total_records: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     successful_records: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_records: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Milestone 3 import differential breakdown — see
+    # docs/community-v0.1-spec.md, "IMPORT DIFFERENTIALS". Every
+    # successfully-normalized record falls into exactly one of new/
+    # unchanged/updated/reopened; resolved_findings counts existing findings
+    # for this source that this import did *not* report (and so are not
+    # among the incoming records at all — they're counted separately, not
+    # a subset of successful_records).
+    new_findings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unchanged_findings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_findings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    resolved_findings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reopened_findings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # workspace_id is a plain single-column FK to Workspace: this
     # relationship owns its synchronization normally.

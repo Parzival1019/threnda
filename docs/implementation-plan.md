@@ -398,29 +398,101 @@ fixed in a separate local commit:
 
 ## Milestone 3 — deduplication and exposures
 
-**Status: not started**
+**Status: done (implementation), pending owner review**
 
-Scope: fingerprinting, layered deduplication (deterministic + fuzzy),
-exposure correlation, import differential engine (`NEW`/`UNCHANGED`/
-`UPDATED`/`RESOLVED`/`REOPENED`).
+Scope: layered deduplication (deterministic + fuzzy) with a manual-review
+tier, exposure correlation, and the import differential engine
+(`NEW`/`UNCHANGED`/`UPDATED`/`RESOLVED`/`REOPENED`). Full design writeup in
+`docs/deduplication.md`.
 
 Acceptance criteria:
 
-- [ ] Deterministic fingerprint generator using the available combination of
+- [x] Deterministic fingerprint generator using the available combination of
       CVE/CWE/asset identity/URL/rule ID/repo+file/image digest/normalized
-      title, documented and stable across re-imports of unchanged data.
-- [ ] Fuzzy-matching layer for `POSSIBLE` confidence duplicates using a
-      deterministic text-similarity algorithm (no new heavy dependency).
-- [ ] `EXACT`/`HIGH` confidence matches correlate automatically into an
-      `Exposure`; `POSSIBLE` matches are surfaced for manual review
-      (merge / keep separate), never auto-merged.
-- [ ] Import differential engine comparing a new `ImportRun` against the
-      prior state of a `Source` and classifying each finding.
-- [ ] Historical findings are never deleted; `RESOLVED` findings/exposures
-      are marked, not removed.
-- [ ] Tests: fingerprint stability, each confidence tier, differential
-      classification against the synthetic repeat-import fixture from
-      Milestone 2.
+      title, documented and stable across re-imports of unchanged data —
+      this was already delivered in Milestone 2
+      (`threnda/app/services/ingestion/fingerprint.py`) and needed no
+      change; Milestone 3 builds correlation on top of it.
+- [x] Fuzzy-matching layer for `POSSIBLE` confidence duplicates using a
+      deterministic text-similarity algorithm, no new dependency
+      (`difflib.SequenceMatcher`, stdlib) —
+      `threnda/app/services/dedup/similarity.py`.
+- [x] `EXACT`/`HIGH` confidence matches correlate automatically into an
+      `Exposure`; `POSSIBLE` matches are surfaced for manual review (merge /
+      keep separate) via `GET/POST /api/v1/possible-duplicates`, never
+      auto-merged under any code path.
+- [x] Import differential engine (`persist_parsed_import`,
+      `threnda/app/services/ingestion/runner.py`) comparing a new
+      `ImportRun` against the prior state of a `Source` and classifying
+      each finding; per-run counts stored on the `ImportRun` itself.
+- [x] Historical findings are never deleted; `RESOLVED` findings are marked
+      (`resolved_at`) and can `REOPENED` (cleared) on reappearance without
+      losing their original exposure link.
+- [x] Tests: fingerprint stability (`test_dedup_similarity.py`), each
+      confidence tier including the shared-signal gate
+      (`test_dedup_correlation.py`), full differential classification
+      (`test_differential_engine.py`), and the review-queue API including
+      workspace scoping and the double-resolution guard
+      (`test_api_possible_duplicates.py`).
+- [x] `pytest` (158 tests), `ruff check`, `ruff format --check`,
+      `mypy threnda tests` (strict), `pip check` all clean.
+
+### Design decisions made in this milestone
+
+- **Correlation runs exactly once per finding, only on a genuine `NEW`
+  classification.** `UNCHANGED`/`UPDATED`/`REOPENED` findings already carry
+  whatever `exposure_id` they were given the first time; re-running
+  correlation on every re-import would risk silently moving an
+  already-reviewed finding to a different exposure out from under a user.
+  This also means a `POSSIBLE` candidate can never be resolved by the mere
+  act of importing again — only the explicit review API can resolve it.
+- **Candidate search is gated on a shared strong signal (CVE or asset), not
+  a full-workspace title scan.** Comparing every new finding's title
+  against every exposure would be both slow at scale and prone to matching
+  titles that merely sound alike but share nothing else in common.
+  `test_high_similarity_without_a_shared_signal_is_never_compared` proves
+  the gate actually excludes an otherwise near-identical (0.978 similarity)
+  title pair that shares no CVE or asset.
+- **`Finding.resolved_at` is deliberately independent of `Exposure.status`.**
+  The differential engine only ever sets/clears `resolved_at` on the
+  `Finding` row; it never transitions the user-controlled `Exposure.status`
+  workflow field. `CLAUDE.md` lists "automated ownership" as an
+  Enterprise-only capability — inferring an exposure's workflow state from
+  source data alone would cross that boundary. A human still decides when
+  an exposure itself is closed.
+- **No bulk-merge or score-threshold auto-merge endpoint for `POSSIBLE`
+  candidates.** Every resolution is one explicit, individually-recorded
+  `POST .../merge` or `POST .../keep-separate` call. This was an explicit,
+  non-negotiable constraint for this milestone, not a design preference.
+- **`uq_findings_workspace_source_fingerprint` needed a pre-flight migration
+  check.** Milestone 2's importer never checked for existing fingerprints
+  before insert, so an existing database could already violate the new
+  constraint. Migration `32832b96f2c3` runs a read-only
+  `_assert_no_duplicate_fingerprints()` check before any DDL and raises
+  cleanly (zero schema/data changes) if it finds any — the same pattern
+  used for the Milestone 1 constraint-safety fix.
+- **`PossibleDuplicate` uses the same composite-FK-scoped-by-`workspace_id`
+  pattern as every other cross-table reference in this schema**
+  (`ForeignKeyConstraint` on `(workspace_id, finding_id)` and
+  `(workspace_id, candidate_exposure_id)`), rather than a bare integer FK,
+  so a `PossibleDuplicate` cannot reference a finding or exposure from a
+  different workspace even via raw SQL.
+
+### Known limitations after Milestone 3
+
+- Layer 3 (semantic/embedding-based matching) is not implemented — the
+  spec gates it on local AI, which Community does not enable by default
+  (Milestone 6 territory).
+- The differential engine only compares a finding against other findings
+  from the *same* `Source`; cross-source correlation happens only through
+  the correlation engine's own Layer 1/2 signals, not through the
+  differential classification itself. This matches the spec's model:
+  differentials are a per-source concept, correlation is a per-workspace
+  one.
+- No web UI yet for the review queue — `/api/v1/possible-duplicates` is
+  HTTP-API-only, same as the rest of Community so far (Milestone 5).
+- Still no authentication — `actor`/`resolved_by` remain caller-supplied
+  strings, same caveat as `ExposureHistory.actor` since Milestone 1.
 
 ## Milestone 4 — workflow, history, risk scoring
 

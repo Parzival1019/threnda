@@ -24,6 +24,7 @@ EXPECTED_TABLES = {
     "findings",
     "exposures",
     "exposure_history",
+    "possible_duplicates",
     "alembic_version",
 }
 

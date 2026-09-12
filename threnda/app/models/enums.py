@@ -122,3 +122,15 @@ class ExposureHistoryEventType(enum.StrEnum):
     REOPENED = "reopened"
     RESOLVED = "resolved"
     NOTE_ADDED = "note_added"
+
+
+class PossibleDuplicateStatus(enum.StrEnum):
+    """Review state of a ``PossibleDuplicate`` candidate.
+
+    ``POSSIBLE``-confidence matches are never auto-merged (see
+    docs/community-v0.1-spec.md, "DEDUPLICATION") — a human decides.
+    """
+
+    PENDING = "pending"
+    MERGED = "merged"
+    KEPT_SEPARATE = "kept_separate"

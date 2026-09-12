@@ -14,6 +14,7 @@ from threnda.app.models.exposure import Exposure
 from threnda.app.models.exposure_history import ExposureHistory
 from threnda.app.models.finding import Finding
 from threnda.app.models.import_run import ImportRun
+from threnda.app.models.possible_duplicate import PossibleDuplicate
 from threnda.app.models.source import Source
 from threnda.app.models.workspace import Workspace
 
@@ -23,6 +24,7 @@ __all__ = [
     "ExposureHistory",
     "Finding",
     "ImportRun",
+    "PossibleDuplicate",
     "Source",
     "Workspace",
 ]

@@ -21,6 +21,11 @@ class ImportRunRead(BaseModel):
     total_records: int
     successful_records: int
     failed_records: int
+    new_findings: int
+    unchanged_findings: int
+    updated_findings: int
+    resolved_findings: int
+    reopened_findings: int
 
 
 class ImportRowErrorRead(BaseModel):

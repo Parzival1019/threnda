@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from threnda.app.models.exposure import Exposure
     from threnda.app.models.finding import Finding
     from threnda.app.models.import_run import ImportRun
+    from threnda.app.models.possible_duplicate import PossibleDuplicate
     from threnda.app.models.source import Source
 
 
@@ -45,6 +46,9 @@ class Workspace(Base):
         back_populates="workspace", cascade="all, delete-orphan"
     )
     exposures: Mapped[list[Exposure]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+    possible_duplicates: Mapped[list[PossibleDuplicate]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan"
     )
 

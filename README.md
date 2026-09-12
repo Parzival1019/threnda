@@ -9,14 +9,19 @@ puts the result into a single actionable queue that a security team can
 actually work through.
 
 > **Status: early development / pre-alpha.**
-> Milestones 1 (project foundation) and 2 (ingestion) are implemented and
-> pending owner review: domain models, SQLite persistence with Alembic
-> migrations, workspace/source provisioning, CSV/JSON/SARIF file upload,
-> and a local-development REST API exist and are tested. There is still no
-> cross-import deduplication, no risk scoring, no UI and no authentication.
-> See [docs/implementation-plan.md](docs/implementation-plan.md) for exact
-> scope and known limitations. Do not deploy this, and do not treat anything
-> below as a description of finished, production-ready functionality.
+> Milestones 1 (project foundation), 2 (ingestion) and 3 (deduplication and
+> exposures) are implemented and pending owner review: domain models,
+> SQLite persistence with Alembic migrations, workspace/source
+> provisioning, CSV/JSON/SARIF file upload, layered deduplication/
+> correlation with a manual-review queue for uncertain matches, an import
+> differential engine (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED), and a
+> local-development REST API exist and are tested. There is still no risk
+> scoring, no UI and no authentication. See
+> [docs/implementation-plan.md](docs/implementation-plan.md) for exact
+> scope and known limitations, and
+> [docs/deduplication.md](docs/deduplication.md) for the correlation/
+> differential design. Do not deploy this, and do not treat anything below
+> as a description of finished, production-ready functionality.
 
 ## Local development
 
