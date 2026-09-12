@@ -1,0 +1,103 @@
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/cos02/schemas/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "SyntheticStaticAnalyzer",
+          "informationUri": "https://example.test/synthetic-static-analyzer",
+          "rules": [
+            {
+              "id": "SYN001",
+              "name": "HardcodedCredential",
+              "shortDescription": { "text": "Hardcoded credential" },
+              "helpUri": "https://example.test/rules/SYN001",
+              "defaultConfiguration": { "level": "error" }
+            },
+            {
+              "id": "SYN002",
+              "name": "InsecureRandom",
+              "shortDescription": { "text": "Use of a non-cryptographic random number generator" },
+              "helpUri": "https://example.test/rules/SYN002",
+              "defaultConfiguration": { "level": "warning" }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "SYN001",
+          "level": "error",
+          "kind": "fail",
+          "message": { "text": "Hardcoded API key literal found in source." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/synthetic_app/config.py" },
+                "region": { "startLine": 42, "startColumn": 5 }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "synthetic0001aaaa"
+          }
+        },
+        {
+          "ruleIndex": 1,
+          "kind": "fail",
+          "message": { "text": "random.random() used to generate a session token." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/synthetic_app/auth.py" },
+                "region": { "startLine": 17 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "SYN002",
+          "kind": "pass",
+          "message": { "text": "No insecure randomness found in src/synthetic_app/utils.py." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/synthetic_app/utils.py" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tool": {
+        "driver": {
+          "name": "SyntheticDependencyScanner",
+          "rules": [
+            {
+              "id": "SYN-DEP-014",
+              "shortDescription": { "text": "Dependency with a known synthetic advisory" }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "SYN-DEP-014",
+          "level": "warning",
+          "kind": "fail",
+          "message": { "text": "synthetic-example-lib 1.2.0 has a fixed synthetic advisory." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "requirements.txt" },
+                "region": { "startLine": 9 }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "findings": [
+    {
+      "id": "synthetic-json-001",
+      "title": "Outdated OpenSSH version",
+      "description": "The SSH banner advertises an OpenSSH release with several fixed advisories.",
+      "severity": "high",
+      "cvss": 7.5,
+      "cve": "CVE-2099-00010",
+      "cwe": "CWE-1104",
+      "asset": {
+        "key": "host:synthetic-bastion-01.example.test",
+        "name": "synthetic-bastion-01.example.test",
+        "type": "host"
+      },
+      "evidence": "SSH-2.0-OpenSSH_synthetic-demo-build",
+      "remediation": "Upgrade OpenSSH to the latest stable release and restart the service.",
+      "references": ["https://example.test/advisories/synthetic-2099-00010"]
+    },
+    {
+      "id": "synthetic-json-002",
+      "title": "Publicly exposed object storage bucket",
+      "description": "The storage bucket allows anonymous list and read access.",
+      "severity": "critical",
+      "cvss": 9.1,
+      "asset": {
+        "key": "cloud_resource:synthetic-exports-bucket",
+        "name": "synthetic-exports-bucket",
+        "type": "cloud_resource"
+      },
+      "remediation": "Restrict bucket policy to authenticated principals and enable access logging.",
+      "references": []
+    },
+    {
+      "id": "synthetic-json-003",
+      "title": "Container image built from an unpinned base image tag",
+      "description": "The build uses \"python:latest\" instead of a pinned digest.",
+      "severity": "low",
+      "asset": {
+        "key": "container_image:synthetic/app-image",
+        "name": "synthetic/app-image",
+        "type": "container_image"
+      },
+      "remediation": "Pin the base image to a specific digest and update it deliberately."
+    }
+  ]
+}

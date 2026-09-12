@@ -227,29 +227,124 @@ and `mypy` all pass after the fixes; see the bugfix commit for exact counts.
 
 ## Milestone 2 — ingestion framework
 
-**Status: not started**
+**Status: done (implementation), pending owner review**
 
-Scope: generic importer interface (`detect`/`validate`/`parse`/`normalize`),
-CSV importer with a column-mapping wizard, generic JSON importer, SARIF 2.1.0
-importer, synthetic demo datasets for each, `POST /api/v1/imports`.
+Scope: generic importer interface, CSV importer with a column-mapping
+wizard, generic JSON importer, SARIF 2.1.0 importer, synthetic demo
+datasets for each, `POST /api/v1/imports`, and (added during this
+milestone — see "Design decisions") workspace/source provisioning
+endpoints.
+
+Independently reviewed against `docs/milestone-2-acceptance.md`; see that
+checklist for the exact scenarios exercised.
 
 Acceptance criteria:
 
-- [ ] `Importer` protocol/base class with the four-stage interface.
-- [ ] CSV importer: column mapping (title/asset/severity/CVSS/CVE/description
-      /remediation), severity name normalization (informational..critical),
-      mapping persisted per source where practical.
-- [ ] Generic JSON importer for a documented Threnda-native finding shape.
-- [ ] SARIF 2.1.0 importer: rule ID, message, severity, location,
-      fingerprints where present, help/remediation links. No assumptions
-      tied to one SARIF-producing tool.
-- [ ] `POST /api/v1/imports` accepts a file upload, creates an `ImportRun`,
-      and persists normalized `Finding` rows against it.
-- [ ] Synthetic demo data: generic CSV, SARIF sample, and a second CSV/JSON
-      export of the same source demonstrating repeat-import behaviour (used
-      fully once Milestone 3's differential engine exists).
-- [ ] Tests: CSV mapping, SARIF parsing, JSON normalization, upload
-      validation (size limits, content-type, malformed input).
+- [x] `Importer` protocol with `detect()`/`parse()` — see "Design
+      decisions" for why this is two stages, not four, and why that's a
+      real simplification and not a coverage gap.
+- [x] CSV importer: column mapping (title/asset/severity/cvss/cve/cwe
+      /description/remediation/evidence), case-insensitive severity name
+      normalization with a CVSS-derived fallback, mapping persisted on
+      `Source.meta` and reused automatically on later uploads.
+- [x] Generic JSON importer for a documented Threnda-native finding shape
+      (`docs/importers.md`).
+- [x] SARIF 2.1.0 importer, read against the public OASIS spec: `ruleId` /
+      `ruleIndex` lookup across multiple runs, explicit vs. rule-default
+      severity, physical locations, `helpUri` references, `kind`-aware
+      (only `fail` results import), line-number-independent fingerprints,
+      `partialFingerprints` preserved verbatim and folded into the
+      fingerprint without inventing meaning for any individual key.
+- [x] `POST /api/v1/imports`: real multipart upload, streaming request-size
+      cap enforced at the ASGI layer (works without `Content-Length`),
+      filenames never used for filesystem access, content validated
+      against the source's declared format via `detect()`, workspace/source
+      mismatch rejected before anything is read, explicit transaction
+      semantics (a `FAILED` `ImportRun` survives a whole-file parse
+      failure; a partially-invalid file persists every valid record and
+      reports every invalid one, never silently discarding either).
+- [x] `POST /api/v1/workspaces` and `POST /api/v1/sources` (plus
+      `GET /api/v1/workspaces`) — not in the original API list, added
+      because ingestion needs a documented, non-SQL way to create the
+      workspace/source an upload belongs to.
+- [x] Synthetic demo data: `demo-data/csv/synthetic-vulnerabilities.csv`
+      (+ a follow-up export for Milestone 3's differential engine),
+      `demo-data/json/synthetic-findings.json`,
+      `demo-data/sarif/synthetic-scan.sarif.json`.
+- [x] Tests: importer unit tests (CSV mapping edge cases, SARIF spec
+      details, JSON normalization), upload API tests (happy path for all
+      three formats through real HTTP, workspace isolation, malicious
+      filenames, malformed content, out-of-range CVSS, mapping
+      persistence/rejection), a standalone ASGI middleware test proving
+      the size cap works without `Content-Length`, and an end-to-end
+      "stop and restart the process" persistence test.
+- [x] `ruff check`, `ruff format --check`, `mypy` clean for `threnda/`;
+      124 tests pass.
+
+### Design decisions made in this milestone
+
+- **Two-stage `Importer` interface, not four.** The spec's
+  `detect`/`validate`/`parse`/`normalize` collapses into `detect()` (cheap
+  sniff) and `parse()` (validates, parses and normalizes in one pass,
+  raising `ImportFormatError` for a whole-file problem and collecting
+  per-record problems in `ParsedImport.errors`). Threading the same
+  intermediate state through four separate method calls would not have
+  changed what's validated — only added boundaries with no behavioural
+  payoff, which is exactly the "unnecessary abstraction" CLAUDE.md asks to
+  avoid.
+- **CSV mapping storage.** Saved on `Source.meta["csv_mapping"]` rather
+  than a new table. `Source` is already workspace-scoped, so this gets "a
+  saved mapping belongs to its source/workspace" for free, and a JSON
+  column that already exists costs nothing bigger than a dict update — a
+  dedicated `SourceFieldMapping` table would be premature for the one
+  format that needs a mapping at all.
+- **Format is declared by `Source.source_type`, not sniffed per upload.**
+  A source is a stable declaration of what it produces; `detect()` still
+  runs against the actual bytes and rejects a mismatch (uploading a SARIF
+  file to a source configured as CSV is a `422`, not a silent
+  reinterpretation) — this is "validate the content-type claim", not
+  "guess the format from content," which would make the same source behave
+  differently upload to upload.
+- **Provisional fingerprints.** `Finding.fingerprint` is `NOT NULL`, so
+  every importer computes one now (`threnda/app/services/ingestion/fingerprint.py`)
+  from whatever identifying fields it has (CVE/asset for CSV/JSON; rule +
+  artifact URI + `partialFingerprints` for SARIF, deliberately excluding
+  line numbers). This is explicitly provisional — Milestone 3's layered
+  deduplication (deterministic → fuzzy → optional semantic) is a different,
+  larger problem and may extend or replace this without a schema change.
+- **Upload size limit is ASGI middleware, not a dependency check.** A
+  dependency reading `Content-Length` can be bypassed by a client that
+  omits the header (chunked transfer) or lies about it — by the time a
+  FastAPI dependency runs, Starlette's multipart parser may have already
+  buffered an unbounded body. `MaxBodySizeMiddleware` counts bytes as they
+  stream through `receive()` and aborts mid-stream; `test_upload_middleware.py`
+  proves this specifically for a request with no `Content-Length` header.
+- **Failed-parse `ImportRun` is not rolled back.** The upload endpoint
+  catches `ImportFormatError` itself and returns a `JSONResponse` directly
+  instead of raising — the request handler completes normally, so the
+  session commits the `FAILED` `ImportRun` it already wrote, instead of the
+  generic per-request rollback-on-exception undoing it. Documented in
+  `docs/importers.md` under "Transaction semantics".
+- **Workspace/source provisioning endpoints, added mid-milestone.** The
+  original API list (`docs/community-v0.1-spec.md`) has no `POST
+  /api/v1/workspaces` or `POST /api/v1/sources` — but the Milestone 2
+  acceptance checklist explicitly requires provisioning through "the
+  documented local interface," not an undocumented SQL shell step, and
+  there was genuinely no other way to create the workspace/source an
+  upload needs. Minimal by design: name + type only, no bulk operations.
+
+### Known limitations after Milestone 2
+
+- No cross-import deduplication or differential engine yet — `Finding.fingerprint`
+  exists but nothing correlates findings across imports into an `Exposure`
+  (Milestone 3).
+- Trivy/Nuclei/Semgrep/vendor importers are not implemented — the
+  `Importer` interface is designed for them, but Community v0.1 ships only
+  CSV/JSON/SARIF.
+- Pentest report ingestion (structured JSON + PDF text extraction) is
+  Milestone 6.
+- No web UI — provisioning and uploads are HTTP-API-only for now.
+- Still no authentication — `workspace_id` remains caller-supplied.
 
 ## Milestone 3 — deduplication and exposures
 

@@ -1,0 +1,6 @@
+Vulnerability,Host,Severity,CVSS,CVE,Description,Solution
+Outdated TLS configuration,synthetic-web-01.example.test,High,7.4,CVE-2099-00001,TLS 1.0 is still accepted by the web server.,Disable TLS 1.0 and TLS 1.1; require TLS 1.2 or higher.
+Default credentials on admin panel,synthetic-app-02.example.test,Critical,9.8,CVE-2099-00002,The administrative panel accepts the vendor default username and password.,Change the default credentials and enforce a strong password policy.
+Verbose error messages,synthetic-web-01.example.test,Medium,5.3,,Stack traces are returned to the client on unhandled exceptions.,Disable debug mode in production and return generic error pages.
+Missing HttpOnly flag on session cookie,synthetic-app-02.example.test,Low,3.1,,The session cookie is not marked HttpOnly.,Set the HttpOnly and Secure flags on all session cookies.
+Outdated jQuery library,synthetic-web-03.example.test,Informational,0,,The site bundles a jQuery version with known historical advisories not applicable to this deployment.,Upgrade to the latest jQuery release during the next maintenance window.

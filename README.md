@@ -9,18 +9,19 @@ puts the result into a single actionable queue that a security team can
 actually work through.
 
 > **Status: early development / pre-alpha.**
-> Milestone 1 (project foundation) is implemented and pending owner review:
-> the domain models, SQLite persistence with Alembic migrations, and a small
-> local-development REST API exist and are tested. There is still no
-> ingestion, no deduplication, no risk scoring, no UI and no authentication.
+> Milestones 1 (project foundation) and 2 (ingestion) are implemented and
+> pending owner review: domain models, SQLite persistence with Alembic
+> migrations, workspace/source provisioning, CSV/JSON/SARIF file upload,
+> and a local-development REST API exist and are tested. There is still no
+> cross-import deduplication, no risk scoring, no UI and no authentication.
 > See [docs/implementation-plan.md](docs/implementation-plan.md) for exact
 > scope and known limitations. Do not deploy this, and do not treat anything
 > below as a description of finished, production-ready functionality.
 
-## Local development (Milestone 1)
+## Local development
 
 Requires Python 3.12+. This is the only thing that works today — there is no
-Docker packaging and no UI yet.
+Docker packaging and no UI yet; everything is through the HTTP API.
 
 ```bash
 python -m venv .venv
@@ -42,6 +43,26 @@ pytest
 ruff check .
 ruff format --check .
 mypy threnda
+```
+
+### Importing a synthetic finding
+
+Create a workspace and a source, then upload one of the synthetic samples
+in `demo-data/` — see [docs/importers.md](docs/importers.md) for the full
+CSV/JSON/SARIF reference and every endpoint's exact contract:
+
+```bash
+curl -s -X POST localhost:8080/api/v1/workspaces \
+  -H "Content-Type: application/json" -d '{"name": "demo"}'
+# -> note the returned "id" as WORKSPACE_ID
+
+curl -s -X POST "localhost:8080/api/v1/sources?workspace_id=$WORKSPACE_ID" \
+  -H "Content-Type: application/json" -d '{"name": "demo-json", "source_type": "json"}'
+# -> note the returned "id" as SOURCE_ID
+
+curl -s -X POST "localhost:8080/api/v1/imports?workspace_id=$WORKSPACE_ID" \
+  -F "source_id=$SOURCE_ID" \
+  -F "file=@demo-data/json/synthetic-findings.json;type=application/json"
 ```
 
 ## Vision

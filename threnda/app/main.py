@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from threnda.app import __version__
 from threnda.app.api.v1.router import api_router
 from threnda.app.core.config import Settings, get_settings
+from threnda.app.core.middleware import MaxBodySizeMiddleware
 from threnda.app.db.session import create_engine_from_settings, create_sessionmaker
 
 DESCRIPTION = (
@@ -55,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
 
+    app.add_middleware(MaxBodySizeMiddleware, max_bytes=resolved_settings.max_upload_bytes)
     app.include_router(api_router)
 
     return app

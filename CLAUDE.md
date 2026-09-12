@@ -160,15 +160,20 @@ the project as MIT, Apache, GPL or anything else until the owner decides.
 
 ## Current state
 
-Milestone 1 (project foundation) is implemented and pending owner review:
-app factory/configuration, SQLAlchemy 2 models for the full Milestone 1
-domain (Workspace, Source, ImportRun, Asset, Finding, Exposure,
-ExposureHistory), SQLite persistence with foreign keys enforced, an Alembic
-migration verified with an upgrade/downgrade round trip, Pydantic v2
-schemas, and a small local-development API
-(`/api/v1/health`, `/api/v1/exposures` incl. `PATCH`, `/api/v1/imports`,
-`/api/v1/sources`, `/api/v1/assets`). See docs/implementation-plan.md for
-exact scope, decisions and known limitations.
+Milestones 1 (project foundation) and 2 (ingestion) are implemented and
+pending owner review: app factory/configuration, SQLAlchemy 2 models for
+the full domain (Workspace, Source, ImportRun, Asset, Finding, Exposure,
+ExposureHistory) with workspace-scoped composite foreign keys and
+DB-enforced enums, SQLite persistence with foreign keys enforced, Alembic
+migrations verified with upgrade/downgrade round trips, Pydantic v2
+schemas, and a local-development API: `/api/v1/health`,
+`/api/v1/workspaces`, `/api/v1/sources` (incl. creation),
+`/api/v1/exposures` (incl. `PATCH`), `/api/v1/imports` (incl. file
+upload), `/api/v1/assets`. CSV, generic JSON and SARIF 2.1.0 file uploads
+work end to end through the real HTTP API. See docs/implementation-plan.md
+for exact scope, decisions and known limitations, and docs/importers.md
+for the ingestion contract.
 
-There is still no authentication, no ingestion, and no UI — Milestones 2-7
-have not started. This is local-development-only; do not deploy it.
+There is still no cross-import deduplication, no risk scoring, no
+authentication, and no UI — Milestones 3-7 have not started. This is
+local-development-only; do not deploy it.

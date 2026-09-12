@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/threnda.db"
     ai_provider: AIProvider = AIProvider.DISABLED
     ai_model: str = ""
+    # Hard cap on request body size, enforced at the ASGI layer (see
+    # threnda.app.core.middleware) before any upload is parsed — this is an
+    # operational safety limit against resource exhaustion, not a cap on how
+    # many findings/assets Threnda can store. 20 MiB comfortably covers a
+    # large CSV/SARIF export while staying well short of memory pressure on
+    # the 16 GB target machine.
+    max_upload_bytes: int = 20 * 1024 * 1024
 
     @property
     def is_production(self) -> bool:
