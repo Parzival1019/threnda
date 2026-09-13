@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from conftest import TestUser, grant_membership
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -12,11 +13,14 @@ from threnda.app.models.source import Source
 from threnda.app.models.workspace import Workspace
 
 
-def test_list_sources_scoped_and_paginated(client: TestClient, db_session: Session) -> None:
+def test_list_sources_scoped_and_paginated(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
     workspace_a = Workspace(name="workspace-a")
     workspace_b = Workspace(name="workspace-b")
     db_session.add_all([workspace_a, workspace_b])
     db_session.flush()
+    grant_membership(db_session, workspace_a, admin_user)
 
     db_session.add_all(
         [
@@ -35,10 +39,13 @@ def test_list_sources_scoped_and_paginated(client: TestClient, db_session: Sessi
     assert all("meta" in item for item in body["items"])
 
 
-def test_list_imports_filters_by_source(client: TestClient, db_session: Session) -> None:
+def test_list_imports_filters_by_source(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
     workspace = Workspace(name="default")
     db_session.add(workspace)
     db_session.flush()
+    grant_membership(db_session, workspace, admin_user)
 
     source_1 = Source(workspace_id=workspace.id, name="Source 1", source_type=SourceType.CSV)
     source_2 = Source(workspace_id=workspace.id, name="Source 2", source_type=SourceType.JSON)
@@ -82,11 +89,12 @@ def test_list_imports_filters_by_source(client: TestClient, db_session: Session)
 
 
 def test_list_assets_filters_by_type_and_environment(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
     workspace = Workspace(name="default")
     db_session.add(workspace)
     db_session.flush()
+    grant_membership(db_session, workspace, admin_user)
 
     db_session.add_all(
         [

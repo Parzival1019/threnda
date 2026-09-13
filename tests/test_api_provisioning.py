@@ -7,6 +7,7 @@ shell step required (see the Milestone 2 acceptance checklist).
 
 from __future__ import annotations
 
+from conftest import TestUser, grant_membership
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -71,10 +72,13 @@ def test_create_source_rejects_unknown_workspace(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_created_source_is_visible_via_list(client: TestClient, db_session: Session) -> None:
+def test_created_source_is_visible_via_list(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
     workspace = Workspace(name="visible-check")
     db_session.add(workspace)
-    db_session.commit()
+    db_session.flush()
+    grant_membership(db_session, workspace, admin_user)
 
     create_response = client.post(
         "/api/v1/sources",

@@ -48,10 +48,11 @@ def low_limit_app(tmp_path: Path) -> FastAPI:
     bytes) exceeds it — reproducing the reported bug exactly.
     """
     db_path = tmp_path / "low_limit.db"
-    settings = Settings(
+    settings = Settings(  # type: ignore[call-arg]
         database_url=f"sqlite:///{db_path}",
         secret_key="test-secret",  # noqa: S106
         max_upload_bytes=LOW_LIMIT_BYTES,
+        _env_file=None,
     )
     engine = create_engine_from_settings(settings)
     Base.metadata.create_all(engine)
@@ -65,18 +66,45 @@ def low_limit_client(low_limit_app: FastAPI) -> Iterator[TestClient]:
         yield test_client
 
 
+LOW_LIMIT_USERNAME = "low-limit-admin"
+LOW_LIMIT_PASSWORD = "Low-Limit-Admin-Pass1!"  # noqa: S105
+
+
 @pytest.fixture
 def workspace_and_json_source(low_limit_app: FastAPI) -> tuple[int, int]:
+    from threnda.app.models.enums import WorkspaceRole
+    from threnda.app.services.memberships import add_member
+    from threnda.app.services.user_accounts import create_user
+
     session: Session = low_limit_app.state.sessionmaker()
     workspace = Workspace(name="low-limit-workspace")
     session.add(workspace)
     session.flush()
     source = Source(workspace_id=workspace.id, name="low-limit-source", source_type=SourceType.JSON)
     session.add(source)
+    user = create_user(session, LOW_LIMIT_USERNAME, LOW_LIMIT_PASSWORD, actor=None)
+    add_member(session, workspace, user, WorkspaceRole.ADMIN, actor=user)
     session.commit()
     ids = (workspace.id, source.id)
     session.close()
     return ids
+
+
+@pytest.fixture
+def authenticated_low_limit_client(
+    low_limit_client: TestClient, workspace_and_json_source: tuple[int, int]
+) -> TestClient:
+    """``low_limit_client``, logged in as the account
+    ``workspace_and_json_source`` created — a separate fixture (rather than
+    baking the login into ``low_limit_client`` itself) so the size-limit
+    tests that deliberately never authenticate keep proving the ASGI-level
+    cap fires before any dependency, auth included, ever runs."""
+    response = low_limit_client.post(
+        "/api/v1/auth/login",
+        json={"username": LOW_LIMIT_USERNAME, "password": LOW_LIMIT_PASSWORD},
+    )
+    assert response.status_code == 200, response.text
+    return low_limit_client
 
 
 def _assert_nothing_was_written(low_limit_app: FastAPI) -> None:
@@ -112,12 +140,12 @@ def test_real_multipart_upload_over_limit_returns_413_not_400(
 
 
 def test_real_multipart_upload_within_limit_still_succeeds(
-    low_limit_client: TestClient, workspace_and_json_source: tuple[int, int]
+    authenticated_low_limit_client: TestClient, workspace_and_json_source: tuple[int, int]
 ) -> None:
     """Control case: confirm the limit doesn't reject legitimate small uploads."""
     workspace_id, source_id = workspace_and_json_source
 
-    response = low_limit_client.post(
+    response = authenticated_low_limit_client.post(
         "/api/v1/imports",
         params={"workspace_id": workspace_id},
         data={"source_id": str(source_id)},

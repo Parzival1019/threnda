@@ -62,7 +62,11 @@ def test_health_reports_outdated_for_a_database_behind_head(tmp_path: Path) -> N
         check=True,
         timeout=60,
     )
-    settings = Settings(database_url=f"sqlite:///{db_path}", secret_key="test-secret")  # noqa: S106
+    settings = Settings(  # type: ignore[call-arg]
+        database_url=f"sqlite:///{db_path}",
+        secret_key="test-secret",
+        _env_file=None,  # noqa: S106
+    )
 
     with TestClient(create_app(settings=settings)) as client:
         response = client.get("/api/v1/health")

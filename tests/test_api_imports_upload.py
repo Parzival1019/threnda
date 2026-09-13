@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from conftest import TestUser, grant_membership
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,7 +20,7 @@ from sqlalchemy.orm import Session
 from threnda.app.core.config import Settings
 from threnda.app.main import create_app
 from threnda.app.models.asset import Asset
-from threnda.app.models.enums import SourceType
+from threnda.app.models.enums import SourceType, WorkspaceRole
 from threnda.app.models.finding import Finding
 from threnda.app.models.import_run import ImportRun
 from threnda.app.models.source import Source
@@ -38,10 +39,13 @@ CSV_MAPPING = {
 }
 
 
-def _make_workspace_and_source(db_session: Session, source_type: SourceType) -> tuple[int, int]:
+def _make_workspace_and_source(
+    db_session: Session, admin_user: TestUser, source_type: SourceType
+) -> tuple[int, int]:
     workspace = Workspace(name=f"synthetic-{source_type.value}")
     db_session.add(workspace)
     db_session.flush()
+    grant_membership(db_session, workspace, admin_user)
     source = Source(
         workspace_id=workspace.id,
         name=f"synthetic-{source_type.value}-source",
@@ -52,8 +56,10 @@ def _make_workspace_and_source(db_session: Session, source_type: SourceType) -> 
     return workspace.id, source.id
 
 
-def test_upload_csv_happy_path(client: TestClient, db_session: Session) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.CSV)
+def test_upload_csv_happy_path(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.CSV)
     content = (DEMO_DATA / "csv" / "synthetic-vulnerabilities.csv").read_bytes()
 
     response = client.post(
@@ -80,8 +86,10 @@ def test_upload_csv_happy_path(client: TestClient, db_session: Session) -> None:
     }
 
 
-def test_upload_json_happy_path(client: TestClient, db_session: Session) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.JSON)
+def test_upload_json_happy_path(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.JSON)
     content = (DEMO_DATA / "json" / "synthetic-findings.json").read_bytes()
 
     response = client.post(
@@ -98,9 +106,11 @@ def test_upload_json_happy_path(client: TestClient, db_session: Session) -> None
 
 
 def test_upload_pentest_json_happy_path_fans_out_across_assets(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.PENTEST_REPORT)
+    workspace_id, source_id = _make_workspace_and_source(
+        db_session, admin_user, SourceType.PENTEST_REPORT
+    )
     content = (DEMO_DATA / "pentest" / "synthetic-pentest-report.json").read_bytes()
 
     response = client.post(
@@ -128,9 +138,11 @@ def test_upload_pentest_json_happy_path_fans_out_across_assets(
 
 
 def test_upload_pentest_json_reimport_is_unchanged_not_duplicated(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.PENTEST_REPORT)
+    workspace_id, source_id = _make_workspace_and_source(
+        db_session, admin_user, SourceType.PENTEST_REPORT
+    )
     content = (DEMO_DATA / "pentest" / "synthetic-pentest-report.json").read_bytes()
 
     client.post(
@@ -156,9 +168,11 @@ def test_upload_pentest_json_reimport_is_unchanged_not_duplicated(
 
 
 def test_upload_pentest_json_per_record_error_does_not_discard_the_rest(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.PENTEST_REPORT)
+    workspace_id, source_id = _make_workspace_and_source(
+        db_session, admin_user, SourceType.PENTEST_REPORT
+    )
     content = json.dumps(
         {
             "report": {},
@@ -187,8 +201,10 @@ def test_upload_pentest_json_per_record_error_does_not_discard_the_rest(
     assert findings[0].title == "Valid pentest finding"
 
 
-def test_upload_sarif_happy_path(client: TestClient, db_session: Session) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.SARIF)
+def test_upload_sarif_happy_path(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.SARIF)
     content = (DEMO_DATA / "sarif" / "synthetic-scan.sarif.json").read_bytes()
 
     response = client.post(
@@ -206,12 +222,13 @@ def test_upload_sarif_happy_path(client: TestClient, db_session: Session) -> Non
 
 
 def test_upload_rejects_foreign_workspace_without_writing_anything(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    _workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.JSON)
+    _workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.JSON)
     other_workspace = Workspace(name="synthetic-other")
     db_session.add(other_workspace)
-    db_session.commit()
+    db_session.flush()
+    grant_membership(db_session, other_workspace, admin_user)
 
     response = client.post(
         "/api/v1/imports",
@@ -225,10 +242,13 @@ def test_upload_rejects_foreign_workspace_without_writing_anything(
     assert db_session.scalars(select(Finding)).all() == []
 
 
-def test_upload_rejects_unknown_source_id(client: TestClient, db_session: Session) -> None:
+def test_upload_rejects_unknown_source_id(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
     workspace = Workspace(name="synthetic-lonely")
     db_session.add(workspace)
-    db_session.commit()
+    db_session.flush()
+    grant_membership(db_session, workspace, admin_user)
 
     response = client.post(
         "/api/v1/imports",
@@ -241,9 +261,9 @@ def test_upload_rejects_unknown_source_id(client: TestClient, db_session: Sessio
 
 
 def test_malicious_filename_is_sanitized_not_used_as_a_path(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.JSON)
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.JSON)
 
     response = client.post(
         "/api/v1/imports",
@@ -274,9 +294,9 @@ def test_sanitize_filename_falls_back_to_a_placeholder_when_empty_or_missing() -
 
 
 def test_malformed_json_records_a_failed_import_run_without_findings(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.JSON)
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.JSON)
 
     response = client.post(
         "/api/v1/imports",
@@ -300,9 +320,9 @@ def test_malformed_json_records_a_failed_import_run_without_findings(
 
 
 def test_content_not_matching_declared_source_type_is_rejected(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.CSV)
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.CSV)
 
     response = client.post(
         "/api/v1/imports",
@@ -318,9 +338,9 @@ def test_content_not_matching_declared_source_type_is_rejected(
 
 
 def test_out_of_range_cvss_is_a_partial_success_with_row_errors(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.JSON)
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.JSON)
     payload = {
         "findings": [
             {"id": "good", "title": "Good finding", "severity": "low"},
@@ -345,9 +365,9 @@ def test_out_of_range_cvss_is_a_partial_success_with_row_errors(
 
 
 def test_csv_upload_without_mapping_and_none_saved_is_rejected(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.CSV)
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.CSV)
 
     response = client.post(
         "/api/v1/imports",
@@ -361,9 +381,9 @@ def test_csv_upload_without_mapping_and_none_saved_is_rejected(
 
 
 def test_csv_mapping_is_saved_and_reused_on_a_later_upload(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.CSV)
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.CSV)
     content = (DEMO_DATA / "csv" / "synthetic-vulnerabilities.csv").read_bytes()
 
     first = client.post(
@@ -385,8 +405,10 @@ def test_csv_mapping_is_saved_and_reused_on_a_later_upload(
     assert second.json()["import_run"]["successful_records"] == 5
 
 
-def test_csv_mapping_rejects_unknown_target_field(client: TestClient, db_session: Session) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.CSV)
+def test_csv_mapping_rejects_unknown_target_field(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.CSV)
 
     response = client.post(
         "/api/v1/imports",
@@ -402,9 +424,9 @@ def test_csv_mapping_rejects_unknown_target_field(client: TestClient, db_session
 
 
 def test_upload_to_unsupported_source_type_is_rejected(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.TRIVY)
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.TRIVY)
 
     response = client.post(
         "/api/v1/imports",
@@ -419,18 +441,26 @@ def test_upload_to_unsupported_source_type_is_rejected(
 
 def test_reopening_the_application_preserves_imported_data(tmp_path: Path) -> None:
     """Simulates "stop the process, start it again" — a second `create_app()`
-    against the same database file must see everything the first one wrote.
+    against the same database file must see everything the first one wrote,
+    including the account created against the first instance.
     """
     from threnda.app.db.base import Base
     from threnda.app.db.session import create_engine_from_settings
+    from threnda.app.services.memberships import add_member
+    from threnda.app.services.user_accounts import create_user
 
     db_path = tmp_path / "reopen-test.db"
-    settings = Settings(database_url=f"sqlite:///{db_path}", secret_key="test-secret")  # noqa: S106
+    settings = Settings(  # type: ignore[call-arg]
+        database_url=f"sqlite:///{db_path}",
+        secret_key="test-secret",
+        _env_file=None,  # noqa: S106
+    )
     engine = create_engine_from_settings(settings)
     Base.metadata.create_all(engine)
     engine.dispose()
 
     content = (DEMO_DATA / "json" / "synthetic-findings.json").read_bytes()
+    username, password = "reopen-admin", "Reopen-Admin-Pass1!"
 
     first_app = create_app(settings=settings)
     with TestClient(first_app) as first_client:
@@ -440,9 +470,16 @@ def test_reopening_the_application_preserves_imported_data(tmp_path: Path) -> No
         session.flush()
         source = Source(workspace_id=workspace.id, name="s", source_type=SourceType.JSON)
         session.add(source)
+        user = create_user(session, username, password, actor=None)
+        add_member(session, workspace, user, WorkspaceRole.ADMIN, actor=user)
         session.commit()
         workspace_id, source_id = workspace.id, source.id
         session.close()
+
+        login = first_client.post(
+            "/api/v1/auth/login", json={"username": username, "password": password}
+        )
+        assert login.status_code == 200, login.text
 
         response = first_client.post(
             "/api/v1/imports",
@@ -453,6 +490,11 @@ def test_reopening_the_application_preserves_imported_data(tmp_path: Path) -> No
         assert response.status_code == 201, response.text
 
     with TestClient(create_app(settings=settings)) as second_client:
+        login = second_client.post(
+            "/api/v1/auth/login", json={"username": username, "password": password}
+        )
+        assert login.status_code == 200, login.text
+
         listing = second_client.get("/api/v1/imports", params={"workspace_id": workspace_id}).json()
         assert listing["total"] == 1
         assert listing["items"][0]["successful_records"] == 3

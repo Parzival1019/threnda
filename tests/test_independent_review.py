@@ -1,6 +1,7 @@
 """Independent regressions for the foundation, using synthetic fixtures only."""
 
 import pytest
+from conftest import TestUser, grant_membership
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
@@ -18,10 +19,12 @@ from threnda.app.models import (
 from threnda.app.models.enums import SeverityLevel, SourceType
 
 
-def seed_exposure(db: Session) -> Exposure:
+def seed_exposure(db: Session, admin_user: TestUser | None = None) -> Exposure:
     workspace = Workspace(name="independent-review")
     db.add(workspace)
     db.flush()
+    if admin_user is not None:
+        grant_membership(db, workspace, admin_user)
     exposure = Exposure(
         workspace_id=workspace.id,
         canonical_fingerprint="synthetic-review",
@@ -37,9 +40,9 @@ def seed_exposure(db: Session) -> Exposure:
 
 @pytest.mark.parametrize("field", ["status", "acknowledged"])
 def test_nonnullable_patch_rejected_atomically(
-    client: TestClient, db_session: Session, field: str
+    client: TestClient, db_session: Session, field: str, admin_user: TestUser
 ) -> None:
-    exposure = seed_exposure(db_session)
+    exposure = seed_exposure(db_session, admin_user)
     response = client.patch(
         f"/api/v1/exposures/{exposure.id}",
         params={"workspace_id": exposure.workspace_id},
@@ -52,9 +55,9 @@ def test_nonnullable_patch_rejected_atomically(
 
 
 def test_deacknowledge_and_remediation_both_have_audit_records(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    exposure = seed_exposure(db_session)
+    exposure = seed_exposure(db_session, admin_user)
     response = client.patch(
         f"/api/v1/exposures/{exposure.id}",
         params={"workspace_id": exposure.workspace_id},

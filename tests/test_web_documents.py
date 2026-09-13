@@ -162,9 +162,8 @@ def test_accept_candidate_from_another_workspace_is_404(client: TestClient) -> N
     candidate_id = _upload_and_find_first_candidate_id(client, source_id)
 
     bootstrap_workspace(client, name="ws-b")
-    client.get("/documents")
-    token = client.cookies.get("threnda_csrf")
-    assert token is not None
+    page = client.get("/documents")
+    token = extract_csrf(page.text)
     response = client.post(
         f"/documents/candidates/{candidate_id}/accept",
         data={"csrf_token": token, "title": "x", "severity": "high"},

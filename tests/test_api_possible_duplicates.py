@@ -8,6 +8,7 @@ triggered twice.
 
 from __future__ import annotations
 
+from conftest import TestUser, grant_membership
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,7 +22,7 @@ from threnda.app.models.workspace import Workspace
 from threnda.app.services.dedup.correlation import correlate_new_finding
 
 
-def _make_pending_candidate(db: Session) -> tuple[int, Exposure, Finding]:
+def _make_pending_candidate(db: Session, admin_user: TestUser) -> tuple[int, Exposure, Finding]:
     """A workspace with an existing exposure and a new finding whose title
     is similar enough to fall in the POSSIBLE band (see
     tests/test_dedup_correlation.py for the verified similarity score).
@@ -29,6 +30,7 @@ def _make_pending_candidate(db: Session) -> tuple[int, Exposure, Finding]:
     workspace = Workspace(name="synthetic-review-queue")
     db.add(workspace)
     db.flush()
+    grant_membership(db, workspace, admin_user)
     source = Source(workspace_id=workspace.id, name="s", source_type=SourceType.JSON)
     db.add(source)
     db.flush()
@@ -75,8 +77,10 @@ def _the_only_candidate(db: Session) -> PossibleDuplicate:
     return db.scalars(select(PossibleDuplicate)).one()
 
 
-def test_pending_candidate_is_listed(client: TestClient, db_session: Session) -> None:
-    workspace_id, _exposure, _finding = _make_pending_candidate(db_session)
+def test_pending_candidate_is_listed(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_id, _exposure, _finding = _make_pending_candidate(db_session, admin_user)
 
     response = client.get("/api/v1/possible-duplicates", params={"workspace_id": workspace_id})
 
@@ -87,29 +91,29 @@ def test_pending_candidate_is_listed(client: TestClient, db_session: Session) ->
 
 
 def test_merge_links_the_finding_to_the_candidate_exposure(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, exposure, finding = _make_pending_candidate(db_session)
+    workspace_id, exposure, finding = _make_pending_candidate(db_session, admin_user)
     candidate_id = _the_only_candidate(db_session).id
 
     response = client.post(
         f"/api/v1/possible-duplicates/{candidate_id}/merge",
-        params={"workspace_id": workspace_id, "actor": "tester"},
+        params={"workspace_id": workspace_id},
     )
 
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["status"] == "merged"
-    assert body["resolved_by"] == "tester"
+    assert body["resolved_by"] == admin_user.username
 
     db_session.refresh(finding)
     assert finding.exposure_id == exposure.id
 
 
 def test_keep_separate_gives_the_finding_its_own_exposure(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, exposure, finding = _make_pending_candidate(db_session)
+    workspace_id, exposure, finding = _make_pending_candidate(db_session, admin_user)
     candidate_id = _the_only_candidate(db_session).id
 
     response = client.post(
@@ -126,9 +130,9 @@ def test_keep_separate_gives_the_finding_its_own_exposure(
 
 
 def test_a_resolved_candidate_cannot_be_acted_on_again(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, _exposure, _finding = _make_pending_candidate(db_session)
+    workspace_id, _exposure, _finding = _make_pending_candidate(db_session, admin_user)
     candidate_id = _the_only_candidate(db_session).id
 
     first = client.post(
@@ -149,9 +153,9 @@ def test_a_resolved_candidate_cannot_be_acted_on_again(
 
 
 def test_merged_candidates_are_excluded_from_the_default_pending_listing(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_id, _exposure, _finding = _make_pending_candidate(db_session)
+    workspace_id, _exposure, _finding = _make_pending_candidate(db_session, admin_user)
     candidate_id = _the_only_candidate(db_session).id
     client.post(
         f"/api/v1/possible-duplicates/{candidate_id}/merge", params={"workspace_id": workspace_id}
@@ -169,12 +173,13 @@ def test_merged_candidates_are_excluded_from_the_default_pending_listing(
 
 
 def test_wrong_workspace_cannot_act_on_another_workspaces_candidate(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    _workspace_id, _exposure, _finding = _make_pending_candidate(db_session)
+    _workspace_id, _exposure, _finding = _make_pending_candidate(db_session, admin_user)
     other_workspace = Workspace(name="synthetic-other")
     db_session.add(other_workspace)
-    db_session.commit()
+    db_session.flush()
+    grant_membership(db_session, other_workspace, admin_user)
     candidate_id = _the_only_candidate(db_session).id
 
     response = client.post(
@@ -186,12 +191,12 @@ def test_wrong_workspace_cannot_act_on_another_workspaces_candidate(
 
 
 def test_nothing_ever_auto_merges_a_possible_candidate(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
     """The candidate must stay PENDING and the finding unlinked until an
     explicit human action — nothing in the correlation path resolves it
     on its own."""
-    _workspace_id, _exposure, finding = _make_pending_candidate(db_session)
+    _workspace_id, _exposure, finding = _make_pending_candidate(db_session, admin_user)
 
     assert finding.exposure_id is None
     candidate = _the_only_candidate(db_session)

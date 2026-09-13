@@ -5,6 +5,7 @@ to.
 
 from __future__ import annotations
 
+from conftest import TestUser, grant_membership
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -16,10 +17,11 @@ from threnda.app.models.source import Source
 from threnda.app.models.workspace import Workspace
 
 
-def _seed(db: Session) -> tuple[Workspace, Asset, Exposure]:
+def _seed(db: Session, admin_user: TestUser) -> tuple[Workspace, Asset, Exposure]:
     workspace = Workspace(name="synthetic-assets")
     db.add(workspace)
     db.flush()
+    grant_membership(db, workspace, admin_user)
     source = Source(workspace_id=workspace.id, name="s", source_type=SourceType.JSON)
     asset = Asset(
         workspace_id=workspace.id,
@@ -55,9 +57,9 @@ def _seed(db: Session) -> tuple[Workspace, Asset, Exposure]:
 
 
 def test_patch_asset_sets_business_criticality_and_recomputes_exposure(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace, asset, exposure = _seed(db_session)
+    workspace, asset, exposure = _seed(db_session, admin_user)
     before = exposure.risk_score
 
     response = client.patch(
@@ -74,9 +76,9 @@ def test_patch_asset_sets_business_criticality_and_recomputes_exposure(
 
 
 def test_patch_asset_internet_facing_true_then_reset_to_null(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace, asset, _exposure = _seed(db_session)
+    workspace, asset, _exposure = _seed(db_session, admin_user)
 
     response = client.patch(
         f"/api/v1/assets/{asset.id}",
@@ -98,9 +100,9 @@ def test_patch_asset_internet_facing_true_then_reset_to_null(
 
 
 def test_patch_asset_rejects_explicit_null_criticality(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace, asset, _exposure = _seed(db_session)
+    workspace, asset, _exposure = _seed(db_session, admin_user)
 
     response = client.patch(
         f"/api/v1/assets/{asset.id}",
@@ -110,8 +112,10 @@ def test_patch_asset_rejects_explicit_null_criticality(
     assert response.status_code == 422
 
 
-def test_patch_asset_wrong_workspace_returns_404(client: TestClient, db_session: Session) -> None:
-    _workspace, asset, _exposure = _seed(db_session)
+def test_patch_asset_wrong_workspace_returns_404(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    _workspace, asset, _exposure = _seed(db_session, admin_user)
     other = Workspace(name="synthetic-other")
     db_session.add(other)
     db_session.commit()
@@ -124,8 +128,10 @@ def test_patch_asset_wrong_workspace_returns_404(client: TestClient, db_session:
     assert response.status_code == 404
 
 
-def test_patch_asset_missing_returns_404(client: TestClient, db_session: Session) -> None:
-    workspace, _asset, _exposure = _seed(db_session)
+def test_patch_asset_missing_returns_404(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace, _asset, _exposure = _seed(db_session, admin_user)
 
     response = client.patch(
         "/api/v1/assets/999999",
@@ -135,8 +141,10 @@ def test_patch_asset_missing_returns_404(client: TestClient, db_session: Session
     assert response.status_code == 404
 
 
-def test_patch_asset_unknown_field_is_rejected(client: TestClient, db_session: Session) -> None:
-    workspace, asset, _exposure = _seed(db_session)
+def test_patch_asset_unknown_field_is_rejected(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace, asset, _exposure = _seed(db_session, admin_user)
 
     response = client.patch(
         f"/api/v1/assets/{asset.id}",
@@ -147,9 +155,9 @@ def test_patch_asset_unknown_field_is_rejected(client: TestClient, db_session: S
 
 
 def test_patch_asset_with_no_changes_does_not_touch_exposure_score(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace, asset, exposure = _seed(db_session)
+    workspace, asset, exposure = _seed(db_session, admin_user)
     before = exposure.risk_score
 
     response = client.patch(
@@ -164,9 +172,9 @@ def test_patch_asset_with_no_changes_does_not_touch_exposure_score(
 
 
 def test_patch_asset_invalid_criticality_value_returns_422(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace, asset, _exposure = _seed(db_session)
+    workspace, asset, _exposure = _seed(db_session, admin_user)
 
     response = client.patch(
         f"/api/v1/assets/{asset.id}",
@@ -176,8 +184,10 @@ def test_patch_asset_invalid_criticality_value_returns_422(
     assert response.status_code == 422
 
 
-def test_list_assets_includes_new_risk_fields(client: TestClient, db_session: Session) -> None:
-    workspace, asset, _exposure = _seed(db_session)
+def test_list_assets_includes_new_risk_fields(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace, asset, _exposure = _seed(db_session, admin_user)
 
     response = client.get("/api/v1/assets", params={"workspace_id": workspace.id})
     assert response.status_code == 200

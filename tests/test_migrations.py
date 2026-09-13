@@ -27,6 +27,11 @@ EXPECTED_TABLES = {
     "possible_duplicates",
     "documents",
     "candidate_findings",
+    "users",
+    "user_sessions",
+    "workspace_memberships",
+    "audit_log_entries",
+    "webhook_endpoints",
     "alembic_version",
 }
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from conftest import TestUser, grant_membership
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -10,11 +11,15 @@ from threnda.app.models.exposure import Exposure
 from threnda.app.models.workspace import Workspace
 
 
-def _seed_exposures(db_session: Session) -> tuple[Workspace, Workspace, Exposure]:
+def _seed_exposures(
+    db_session: Session, admin_user: TestUser
+) -> tuple[Workspace, Workspace, Exposure]:
     workspace_a = Workspace(name="workspace-a")
     workspace_b = Workspace(name="workspace-b")
     db_session.add_all([workspace_a, workspace_b])
     db_session.flush()
+    grant_membership(db_session, workspace_a, admin_user)
+    grant_membership(db_session, workspace_b, admin_user)
 
     exposures = [
         Exposure(
@@ -47,8 +52,10 @@ def _seed_exposures(db_session: Session) -> tuple[Workspace, Workspace, Exposure
     return workspace_a, workspace_b, exposures[0]
 
 
-def test_list_exposures_is_scoped_to_workspace(client: TestClient, db_session: Session) -> None:
-    workspace_a, workspace_b, _ = _seed_exposures(db_session)
+def test_list_exposures_is_scoped_to_workspace(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_a, workspace_b, _ = _seed_exposures(db_session, admin_user)
 
     response = client.get("/api/v1/exposures", params={"workspace_id": workspace_a.id})
     assert response.status_code == 200
@@ -62,9 +69,9 @@ def test_list_exposures_is_scoped_to_workspace(client: TestClient, db_session: S
 
 
 def test_list_exposures_orders_by_risk_score_descending(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_a, _, _ = _seed_exposures(db_session)
+    workspace_a, _, _ = _seed_exposures(db_session, admin_user)
 
     response = client.get("/api/v1/exposures", params={"workspace_id": workspace_a.id})
     scores = [item["risk_score"] for item in response.json()["items"]]
@@ -72,9 +79,9 @@ def test_list_exposures_orders_by_risk_score_descending(
 
 
 def test_list_exposures_filters_by_severity_and_search(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_a, _, _ = _seed_exposures(db_session)
+    workspace_a, _, _ = _seed_exposures(db_session, admin_user)
 
     response = client.get(
         "/api/v1/exposures",
@@ -91,8 +98,10 @@ def test_list_exposures_filters_by_severity_and_search(
     assert response.json()["total"] == 1
 
 
-def test_list_exposures_pagination(client: TestClient, db_session: Session) -> None:
-    workspace_a, _, _ = _seed_exposures(db_session)
+def test_list_exposures_pagination(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_a, _, _ = _seed_exposures(db_session, admin_user)
 
     response = client.get(
         "/api/v1/exposures",
@@ -105,8 +114,8 @@ def test_list_exposures_pagination(client: TestClient, db_session: Session) -> N
     assert body["offset"] == 0
 
 
-def test_get_exposure_detail(client: TestClient, db_session: Session) -> None:
-    workspace_a, _, exposure = _seed_exposures(db_session)
+def test_get_exposure_detail(client: TestClient, db_session: Session, admin_user: TestUser) -> None:
+    workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
 
     response = client.get(
         f"/api/v1/exposures/{exposure.id}", params={"workspace_id": workspace_a.id}
@@ -115,8 +124,10 @@ def test_get_exposure_detail(client: TestClient, db_session: Session) -> None:
     assert response.json()["owner"] == "alice"
 
 
-def test_get_exposure_wrong_workspace_returns_404(client: TestClient, db_session: Session) -> None:
-    _, workspace_b, exposure = _seed_exposures(db_session)
+def test_get_exposure_wrong_workspace_returns_404(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    _, workspace_b, exposure = _seed_exposures(db_session, admin_user)
 
     response = client.get(
         f"/api/v1/exposures/{exposure.id}", params={"workspace_id": workspace_b.id}
@@ -124,28 +135,32 @@ def test_get_exposure_wrong_workspace_returns_404(client: TestClient, db_session
     assert response.status_code == 404
 
 
-def test_get_exposure_missing_returns_404(client: TestClient, db_session: Session) -> None:
-    workspace_a, _, _ = _seed_exposures(db_session)
+def test_get_exposure_missing_returns_404(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_a, _, _ = _seed_exposures(db_session, admin_user)
 
     response = client.get("/api/v1/exposures/999999", params={"workspace_id": workspace_a.id})
     assert response.status_code == 404
 
 
-def test_patch_exposure_requires_workspace_id(client: TestClient, db_session: Session) -> None:
-    _, _, exposure = _seed_exposures(db_session)
+def test_patch_exposure_requires_workspace_id(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    _, _, exposure = _seed_exposures(db_session, admin_user)
 
     response = client.patch(f"/api/v1/exposures/{exposure.id}", json={"owner": "bob"})
     assert response.status_code == 422
 
 
 def test_patch_exposure_changes_status_and_records_history(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_a, _, exposure = _seed_exposures(db_session)
+    workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
 
     response = client.patch(
         f"/api/v1/exposures/{exposure.id}",
-        params={"workspace_id": workspace_a.id, "actor": "unit-test"},
+        params={"workspace_id": workspace_a.id},
         json={"status": "acknowledged"},
     )
     assert response.status_code == 200
@@ -162,13 +177,13 @@ def test_patch_exposure_changes_status_and_records_history(
     assert exposure.history[0].event_type.value == "status_changed"
     assert exposure.history[0].previous_value == "open"
     assert exposure.history[0].new_value == "acknowledged"
-    assert exposure.history[0].actor == "unit-test"
+    assert exposure.history[0].actor == admin_user.username
 
 
 def test_patch_exposure_resolve_sets_resolved_at_and_reopen_clears_it(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_a, _, exposure = _seed_exposures(db_session)
+    workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
 
     resolved = client.patch(
         f"/api/v1/exposures/{exposure.id}",
@@ -190,9 +205,9 @@ def test_patch_exposure_resolve_sets_resolved_at_and_reopen_clears_it(
 
 
 def test_patch_exposure_owner_and_note_and_target_date(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_a, _, exposure = _seed_exposures(db_session)
+    workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
 
     response = client.patch(
         f"/api/v1/exposures/{exposure.id}",
@@ -213,8 +228,10 @@ def test_patch_exposure_owner_and_note_and_target_date(
     assert event_types == {"owner_changed", "remediation_date_changed", "note_added"}
 
 
-def test_patch_exposure_unknown_field_is_rejected(client: TestClient, db_session: Session) -> None:
-    workspace_a, _, exposure = _seed_exposures(db_session)
+def test_patch_exposure_unknown_field_is_rejected(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
 
     response = client.patch(
         f"/api/v1/exposures/{exposure.id}",
@@ -225,9 +242,9 @@ def test_patch_exposure_unknown_field_is_rejected(client: TestClient, db_session
 
 
 def test_patch_exposure_wrong_workspace_returns_404(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    _, workspace_b, exposure = _seed_exposures(db_session)
+    _, workspace_b, exposure = _seed_exposures(db_session, admin_user)
 
     response = client.patch(
         f"/api/v1/exposures/{exposure.id}",
@@ -238,9 +255,9 @@ def test_patch_exposure_wrong_workspace_returns_404(
 
 
 def test_patch_exposure_invalid_transition_returns_409_and_does_not_mutate(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_a, _, exposure = _seed_exposures(db_session)
+    workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
     # ACKNOWLEDGED -> OPEN is not a documented edge (only RESOLVED/
     # RISK_ACCEPTED reopen to OPEN) — see threnda.app.services.exposures.
     client.patch(
@@ -261,9 +278,9 @@ def test_patch_exposure_invalid_transition_returns_409_and_does_not_mutate(
 
 
 def test_get_exposure_includes_risk_score_breakdown(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
-    workspace_a, _, exposure = _seed_exposures(db_session)
+    workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
 
     response = client.get(
         f"/api/v1/exposures/{exposure.id}", params={"workspace_id": workspace_a.id}
@@ -281,8 +298,10 @@ def test_get_exposure_includes_risk_score_breakdown(
     assert body["risk_score"] == max(0, min(100, raw_total))
 
 
-def test_list_exposures_filters_by_risk_range(client: TestClient, db_session: Session) -> None:
-    workspace_a, _, _ = _seed_exposures(db_session)
+def test_list_exposures_filters_by_risk_range(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_a, _, _ = _seed_exposures(db_session, admin_user)
 
     response = client.get(
         "/api/v1/exposures",

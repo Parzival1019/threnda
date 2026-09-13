@@ -154,8 +154,19 @@ def test_resolve_and_reopen_are_traceable_to_the_finding(db_session: Session) ->
 def test_duplicate_normalized_identity_is_a_durable_client_error(
     initialized_settings: Settings,
 ) -> None:
+    from threnda.app.services.user_accounts import create_user
+
     app = create_app(settings=initialized_settings)
     with TestClient(app, raise_server_exceptions=False) as client:
+        session = app.state.sessionmaker()
+        create_user(session, "reviewer", "Reviewer-Pass-1234!", actor=None)
+        session.commit()
+        session.close()
+        login = client.post(
+            "/api/v1/auth/login", json={"username": "reviewer", "password": "Reviewer-Pass-1234!"}
+        )
+        assert login.status_code == 200, login.text
+
         workspace = client.post("/api/v1/workspaces", json={"name": "Synthetic duplicate"}).json()
         source = client.post(
             "/api/v1/sources",
