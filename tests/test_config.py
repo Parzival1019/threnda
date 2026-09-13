@@ -13,11 +13,14 @@ def test_settings_defaults_match_env_example() -> None:
 
     assert settings.env is Environment.DEVELOPMENT
     assert settings.database_url == "sqlite:///./data/threnda.db"
-    assert settings.ai_provider is AIProvider.DISABLED
+    assert settings.ai_provider is AIProvider.EMBEDDED
     assert settings.ai_model == ""
     assert settings.ai_base_url == "http://127.0.0.1:11434"
-    assert settings.ai_timeout_seconds == 5.0
+    assert settings.ai_timeout_seconds == 30.0
     assert settings.ai_max_input_characters == 50_000
+    assert settings.ai_data_dir == "./data/ai"
+    assert settings.ai_embedded_port == 11435
+    assert settings.ai_startup_timeout_seconds == 120.0
     assert settings.is_production is False
     assert settings.is_sqlite is True
 

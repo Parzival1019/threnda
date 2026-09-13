@@ -18,6 +18,8 @@ from threnda.app.models.enums import WorkspaceRole
 from threnda.app.models.user import User
 from threnda.app.models.webhook_endpoint import WebhookEndpoint
 from threnda.app.models.workspace_membership import WorkspaceMembership
+from threnda.app.services.ai import AIUnavailableError, EmbeddedAIProvider
+from threnda.app.services.ai.embedded import embedded_ai_status, start_embedded_ai_install
 from threnda.app.services.auth import InvalidUsernameError, WeakPasswordError, normalize_username
 from threnda.app.services.memberships import (
     LastAdminError,
@@ -209,6 +211,83 @@ def remove_member_form(
         return _members_error(request, db, membership, str(exc))
     return RedirectResponse(
         url=f"/settings/members?workspace_id={membership.workspace_id}", status_code=303
+    )
+
+
+@router.get("/ai")
+def local_ai_page(
+    request: Request,
+    notice: str | None = None,
+    error: str | None = None,
+    membership: WorkspaceMembership = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    token = get_csrf_token(request)
+    response = templates.TemplateResponse(
+        request,
+        "settings/ai.html",
+        {
+            "active_nav": "settings",
+            "ai_status": embedded_ai_status(request.app.state.settings),
+            "notice": notice,
+            "error": error,
+            "csrf_token": token,
+            **build_shell_context(request, db, membership.workspace, membership),
+        },
+    )
+    apply_csrf_cookie(request, response, token)
+    return response
+
+
+@router.post("/ai/install")
+def install_local_ai_form(
+    request: Request,
+    csrf_token: str = Form(...),
+    membership: WorkspaceMembership = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    status = embedded_ai_status(request.app.state.settings)
+    if status.installed:
+        return local_ai_page(
+            request, notice="Threnda Local AI is already installed.", membership=membership, db=db
+        )
+    if not status.supported:
+        return local_ai_page(
+            request,
+            error="This operating system is not yet supported by the embedded AI bundle.",
+            membership=membership,
+            db=db,
+        )
+    started = start_embedded_ai_install(request.app.state.settings)
+    notice = (
+        "Local AI installation started. The verified model is about 4.7 GB; refresh this "
+        "page to see its status."
+        if started
+        else "Local AI installation is already running."
+    )
+    return local_ai_page(request, notice=notice, membership=membership, db=db)
+
+
+@router.post("/ai/test")
+def test_local_ai_form(
+    request: Request,
+    csrf_token: str = Form(...),
+    membership: WorkspaceMembership = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    try:
+        result = EmbeddedAIProvider(request.app.state.settings).summarize_finding(
+            "Synthetic test finding: a demonstration service exposed a sample marker file."
+        )
+    except AIUnavailableError as exc:
+        return local_ai_page(request, error=str(exc), membership=membership, db=db)
+    return local_ai_page(
+        request,
+        notice=f"Local AI responded successfully using {result.model}.",
+        membership=membership,
+        db=db,
     )
 
 

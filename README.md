@@ -9,14 +9,14 @@ puts the result into a single actionable queue that a security team can
 actually work through.
 
 > **Status: early development / pre-alpha.**
-> Milestones 1–7 (project foundation, ingestion, deduplication and
+> Milestones 1–8 (project foundation, ingestion, deduplication and
 > exposures, workflow and risk scoring, web UI, pentest ingestion/optional
 > local AI, and authentication/hardening/packaging) are implemented and
 > pending owner review: domain models, SQLite/PostgreSQL persistence with
 > Alembic migrations, CSV/JSON/SARIF/structured-pentest-JSON file upload,
 > local (no-cloud, no-OCR) PDF/TXT/Markdown pentest report extraction with a
-> mandatory-human-review candidate-finding queue, optional local Ollama AI
-> assistance (disabled by default, zero network calls when disabled),
+> mandatory-human-review candidate-finding queue, built-in local AI powered
+> by a Threnda-managed llama.cpp/Qwen bundle (no separate AI application),
 > layered deduplication/correlation with a manual-review queue for
 > uncertain matches, an import differential engine
 > (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED), server-enforced exposure
@@ -58,6 +58,12 @@ open http://localhost:8080   # log in with the bootstrap admin account
 No manual database setup is required — Compose starts PostgreSQL, waits for
 it to be healthy, and the app container applies migrations automatically
 before serving traffic.
+
+Local AI is optional but self-contained. An admin can install the pinned
+runtime/model from **Settings → Local AI**; no Ollama or cloud account is
+required. The equivalent command is `threnda ai install`. See
+[docs/local-ai.md](docs/local-ai.md) for the small-download and offline-bundle
+paths.
 
 ## Local Python development
 
@@ -180,7 +186,7 @@ priority. Threnda's goal is to collapse that into one queue.
 - **Unlimited findings** — no artificial caps
 - **Unlimited assets** — no artificial caps
 - **No mandatory cloud services**
-- **No mandatory external AI** — local AI is optional, never required
+- **Built-in private AI** — optional, locally managed, no separate AI app
 - **No telemetry by default**
 
 ## Editions

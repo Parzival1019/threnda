@@ -186,9 +186,9 @@ evidence/business criticality/finding age. Local, fully offline PDF/TXT/
 Markdown pentest report extraction (`threnda/app/services/documents/`, no
 OCR, no network calls) proposes candidate findings that always require an
 explicit human accept/reject decision before becoming a real finding —
-optionally assisted by a local Ollama instance
-(`threnda/app/services/ai/`), disabled by default and making zero network
-calls when disabled. A server-rendered Jinja2 + HTMX web UI
+optionally assisted by Threnda's managed llama.cpp/Qwen local-AI bundle
+(`threnda/app/services/ai/`), with no separate AI application or cloud
+provider required. A server-rendered Jinja2 + HTMX web UI
 (`threnda/app/web/`) covers the findings queue (with risk-score
 filtering) with its exposure detail panel (including a Risk tab), imports
 (including a CSV column-mapping wizard), sources, document upload and
@@ -237,6 +237,11 @@ for the Docker/bootstrap/TLS/backup/upgrade operational contract,
 docs/webhooks.md and docs/exports.md for those two features, and
 docs/implementation-plan.md for exact scope, verification results, and
 known limitations.
+
+Milestone 8 (self-contained Local AI) adds a pinned, checksum-verified
+llama.cpp/Qwen bundle, `threnda ai install`, offline-bundle support, and an
+admin-only Settings page. AI actions remain explicit and advisory, but
+ordinary Community users no longer install or configure Ollama separately.
 
 This remains pre-alpha and has not had an independent security review —
 see docs/security.md, "What this is not" — but the web UI and JSON API are

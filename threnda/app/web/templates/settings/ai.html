@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% block title %}Local AI{% endblock %}
+{% block page_title %}Local AI{% endblock %}
+{% block content %}
+{% with current_settings="ai" %}{% include "settings/_nav.html" %}{% endwith %}
+
+<div class="page-header">
+  <h2>Private AI, built into Threnda</h2>
+  <p>No separate AI application or cloud account is required. Threnda manages a pinned
+     llama.cpp runtime and Qwen2.5 model, bound to this machine only.</p>
+</div>
+
+{% if notice %}<div class="notice-banner">{{ notice }}</div>{% endif %}
+{% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+
+<div class="ai-grid">
+  <section class="card ai-card">
+    <div class="ai-status-line">
+      <span class="ai-dot {% if ai_status.running %}is-running{% elif ai_status.installed %}is-ready{% endif %}" aria-hidden="true"></span>
+      <div>
+        <h3>{% if ai_status.running %}Local AI is running{% elif ai_status.installed %}Ready to use{% elif ai_status.installing %}Installing…{% else %}Not installed yet{% endif %}</h3>
+        <p>{{ ai_status.stage }}</p>
+      </div>
+    </div>
+    <dl class="ai-details">
+      <div><dt>Model</dt><dd>{{ ai_status.model }}</dd></div>
+      <div><dt>Runtime</dt><dd>llama.cpp {{ ai_status.runtime_version }}</dd></div>
+      <div><dt>Privacy</dt><dd>localhost only · no telemetry</dd></div>
+      <div><dt>Disk space</dt><dd>approximately 4.7 GB</dd></div>
+    </dl>
+    {% if ai_status.error %}<div class="error-banner">{{ ai_status.error }}</div>{% endif %}
+    <div class="ai-actions">
+      {% if not ai_status.installed %}
+      <form method="post" action="/settings/ai/install?workspace_id={{ workspace.id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary" {% if ai_status.installing or not ai_status.supported %}disabled{% endif %}>
+          {% if ai_status.installing %}Installing…{% else %}Install Local AI{% endif %}
+        </button>
+      </form>
+      {% else %}
+      <form method="post" action="/settings/ai/test?workspace_id={{ workspace.id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary">Test Local AI</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-secondary" href="/settings/ai?workspace_id={{ workspace.id }}">Refresh status</a>
+    </div>
+  </section>
+
+  <section class="card ai-card">
+    <span class="badge">HUMAN REVIEW REQUIRED</span>
+    <h3>AI stays advisory</h3>
+    <p>AI suggestions are visibly labelled and enter the same candidate-review queue as
+       rule-based extraction. The model cannot change findings, merge records, or calculate
+       authoritative risk scores by itself.</p>
+    <p class="cell-muted">The runtime starts only when an AI action is requested and stops with Threnda.</p>
+  </section>
+</div>
+{% endblock %}

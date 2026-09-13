@@ -31,7 +31,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 import threnda.app.models  # noqa: F401 - ensure all mappers are registered
-from threnda.app.core.config import Settings
+from threnda.app.core.config import AIProvider, Settings
 from threnda.app.db.base import Base
 from threnda.app.db.session import create_engine_from_settings
 from threnda.app.main import create_app
@@ -90,6 +90,7 @@ def settings(tmp_path: Path) -> Settings:
     return Settings(  # type: ignore[call-arg]
         database_url=f"sqlite:///{db_path}",
         secret_key="test-secret",  # noqa: S106
+        ai_provider=AIProvider.DISABLED,
         _env_file=None,
     )
 
@@ -214,6 +215,7 @@ def migrated_settings(tmp_path: Path) -> Settings:
     return Settings(  # type: ignore[call-arg]
         database_url=f"sqlite:///{db_path}",
         secret_key="test-secret",  # noqa: S106
+        ai_provider=AIProvider.DISABLED,
         _env_file=None,
     )
 

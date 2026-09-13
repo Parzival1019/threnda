@@ -221,6 +221,114 @@ textarea {
   color: var(--text-secondary);
 }
 
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tabs a {
+  padding: 8px 10px 9px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  border-bottom: 2px solid transparent;
+}
+.settings-tabs a:hover {
+  color: var(--text-primary);
+}
+.settings-tabs a[aria-current="page"] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.ai-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+  gap: 16px;
+  max-width: 900px;
+  margin-top: 18px;
+}
+.ai-card {
+  padding: 18px;
+}
+.ai-card h3 {
+  margin: 8px 0 5px;
+  font-size: 14px;
+}
+.ai-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.ai-card p + p {
+  margin-top: 14px;
+}
+.ai-status-line {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.ai-status-line h3,
+.ai-status-line p {
+  margin: 0;
+}
+.ai-dot {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--text-muted);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--text-muted) 14%, transparent);
+}
+.ai-dot.is-ready {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.ai-dot.is-running {
+  background: var(--positive);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--positive) 16%, transparent);
+}
+.ai-details {
+  margin: 18px 0;
+  border-top: 1px solid var(--border);
+}
+.ai-details div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ai-details dt {
+  color: var(--text-muted);
+  font: 10.5px var(--font-mono);
+  text-transform: uppercase;
+}
+.ai-details dd {
+  margin: 0;
+  text-align: right;
+  font: 11.5px var(--font-mono);
+}
+.ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-actions form {
+  margin: 0;
+}
+
+@media (max-width: 840px) {
+  .ai-grid {
+    grid-template-columns: 1fr;
+  }
+  .settings-tabs {
+    overflow-x: auto;
+  }
+}
+
 /* ------------------------------------------------------------- buttons */
 
 .btn {

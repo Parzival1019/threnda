@@ -2,6 +2,7 @@
 {% block title %}Audit log{% endblock %}
 {% block page_title %}Audit log{% endblock %}
 {% block content %}
+{% with current_settings="audit" %}{% include "settings/_nav.html" %}{% endwith %}
 <div class="page-header">
   <h2>Administrative audit log</h2>
   <p>Security-sensitive actions only — logins, membership changes, webhook

@@ -2,6 +2,7 @@
 {% block title %}Members{% endblock %}
 {% block page_title %}Members{% endblock %}
 {% block content %}
+{% with current_settings="members" %}{% include "settings/_nav.html" %}{% endwith %}
 <div class="page-header">
   <h2>Workspace members</h2>
   <p>Admins manage membership and roles. Analysts operate findings, imports,

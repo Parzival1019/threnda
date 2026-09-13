@@ -21,10 +21,12 @@ import pytest
 from threnda.app.core.config import AIProvider as AIProviderName
 from threnda.app.core.config import Settings
 from threnda.app.models.enums import SeverityLevel
+from threnda.app.services.ai.embedded import EmbeddedAIError
 from threnda.app.services.ai.provider import (
     MAX_RESPONSE_BYTES,
     AIUnavailableError,
     DisabledAIProvider,
+    EmbeddedAIProvider,
     OllamaAIProvider,
     build_ai_provider,
 )
@@ -112,10 +114,54 @@ def test_disabled_provider_every_method_raises_with_zero_io(call: Any) -> None:
     mocked.assert_not_called()
 
 
-def test_build_ai_provider_returns_disabled_by_default() -> None:
+def test_build_ai_provider_returns_embedded_by_default() -> None:
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     provider = build_ai_provider(settings)
+    assert isinstance(provider, EmbeddedAIProvider)
+
+
+def test_build_ai_provider_can_be_explicitly_disabled() -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None, ai_provider=AIProviderName.DISABLED
+    )
+    provider = build_ai_provider(settings)
     assert isinstance(provider, DisabledAIProvider)
+
+
+def test_embedded_provider_uses_managed_loopback_server_and_validates_json() -> None:
+    provider = EmbeddedAIProvider(Settings(_env_file=None))  # type: ignore[call-arg]
+    envelope = {"choices": [{"message": {"content": json.dumps({"text": "Local summary."})}}]}
+    with (
+        patch(
+            "threnda.app.services.ai.embedded.ensure_embedded_ai_running",
+            return_value="http://127.0.0.1:11435",
+        ),
+        patch(
+            f"{PROVIDER_PATH}.urlopen", return_value=_FakeResponse(json.dumps(envelope).encode())
+        ) as mocked,
+    ):
+        result = provider.summarize_finding("untrusted synthetic text")
+
+    assert result.text == "Local summary."
+    assert result.machine_generated is True
+    request = mocked.call_args.args[0]
+    assert request.full_url == "http://127.0.0.1:11435/v1/chat/completions"
+    sent = json.loads(request.data)
+    assert sent["stream"] is False
+    assert sent["response_format"] == {"type": "json_object"}
+    assert "---BEGIN UNTRUSTED DATA---" in sent["messages"][1]["content"]
+
+
+def test_embedded_provider_wraps_runtime_failure() -> None:
+    provider = EmbeddedAIProvider(Settings(_env_file=None))  # type: ignore[call-arg]
+    with (
+        patch(
+            "threnda.app.services.ai.embedded.ensure_embedded_ai_running",
+            side_effect=EmbeddedAIError("not installed"),
+        ),
+        pytest.raises(AIUnavailableError, match="not installed"),
+    ):
+        provider.summarize_finding("x")
 
 
 # --- OllamaAIProvider construction / localhost enforcement ------------------------

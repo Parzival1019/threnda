@@ -6,7 +6,7 @@ section below is implemented in this repository, and none of it will be:
 Enterprise functionality lives in the separate private
 `Parzival1019/threnda-enterprise` repository.
 
-## Shipped in Community v0.1 (Milestones 1–7)
+## Shipped in Community v0.1 (Milestones 1–8)
 
 - Domain model, SQLite/PostgreSQL persistence, Alembic migrations.
 - CSV (with a column-mapping wizard), generic JSON, SARIF 2.1.0, and
@@ -17,8 +17,8 @@ Enterprise functionality lives in the separate private
 - Exposure lifecycle enforcement and a deterministic, explainable risk score.
 - A server-rendered Jinja2 + HTMX web UI.
 - Local, offline PDF/text extraction with a mandatory-human-review
-  candidate-finding queue; optional local Ollama assistance, disabled by
-  default, zero network calls when disabled.
+  candidate-finding queue; a managed llama.cpp/Qwen local-AI bundle with
+  one-click installation and no separate AI application.
 - Local accounts, Argon2id password hashing, secure sessions, per-workspace
   roles (admin/analyst/viewer), CSRF protection, an administrative audit
   log, CSV/JSON export, a generic (SSRF-defended) outbound webhook, and

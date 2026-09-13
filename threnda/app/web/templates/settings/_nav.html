@@ -1,0 +1,6 @@
+<nav class="settings-tabs" aria-label="Settings sections">
+  <a href="/settings/members?workspace_id={{ workspace.id }}" {% if current_settings == "members" %}aria-current="page"{% endif %}>Members</a>
+  <a href="/settings/ai?workspace_id={{ workspace.id }}" {% if current_settings == "ai" %}aria-current="page"{% endif %}>Local AI</a>
+  <a href="/settings/webhooks?workspace_id={{ workspace.id }}" {% if current_settings == "webhooks" %}aria-current="page"{% endif %}>Webhooks</a>
+  <a href="/settings/audit-log?workspace_id={{ workspace.id }}" {% if current_settings == "audit" %}aria-current="page"{% endif %}>Audit log</a>
+</nav>

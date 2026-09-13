@@ -13,18 +13,19 @@ true (nothing has, as of this milestone).
  browser / API client → │        FastAPI process       │ → SQLite or PostgreSQL
                         │  (Uvicorn, one worker)       │
                         └─────────────────────────────┘
-                                     │
-                          optional, disabled by default
+                                     │ explicit AI action
                                      ▼
-                          local Ollama (loopback only)
+                    Threnda-managed llama.cpp child process
+                    (loopback only; starts lazily, stops with app)
 ```
 
-There is no background worker anywhere. Everything — ingestion, deduplication,
-risk scoring, PDF text extraction, webhook delivery — happens synchronously
-inside the HTTP request that triggers it. This is a deliberate simplicity
-trade-off (CLAUDE.md: "prefer simpler architecture... avoid unnecessary
-abstractions") appropriate to Community's scale target (a security team's
-local findings queue, not a multi-tenant SaaS).
+There is no job queue or persistent background worker. Ingestion,
+deduplication, risk scoring, PDF text extraction and webhook delivery happen
+synchronously inside the request that triggers them. The one-click Local AI
+installer uses one bounded in-process download thread so a multi-gigabyte
+download does not hold the browser response open; its durable state is a small
+JSON file under `data/ai`. The managed llama.cpp child process exists only for
+local inference and is terminated with the FastAPI process.
 
 ## Code layout
 
@@ -44,7 +45,7 @@ threnda/app/
     ingestion/       importer interface + CSV/JSON/SARIF/pentest-JSON
     dedup/           fingerprinting, similarity, correlation
     documents/       local PDF/text extraction, candidate-finding review
-    ai/              AIProvider abstraction (disabled/Ollama)
+    ai/              AIProvider abstraction + managed llama.cpp lifecycle
     auth.py, memberships.py, audit.py, crypto.py, webhooks.py, exports.py,
     rate_limit.py, user_accounts.py   — Milestone 7 additions
   api/v1/            the versioned JSON API, one router module per resource

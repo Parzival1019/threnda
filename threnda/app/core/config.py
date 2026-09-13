@@ -25,13 +25,14 @@ class Environment(enum.StrEnum):
 class AIProvider(enum.StrEnum):
     """Which local AI backend, if any, Threnda should use.
 
-    AI is always optional and ``DISABLED`` by default. ``OLLAMA``
-    (``threnda.app.services.ai.provider.OllamaAIProvider``) talks only to a
-    localhost Ollama instance — see docs/local-ai.md. There is no cloud LLM
-    provider and there will not be one — see CLAUDE.md.
+    AI actions are always optional. ``EMBEDDED`` manages Threnda's pinned
+    llama.cpp/Qwen bundle; ``OLLAMA`` is a developer compatibility path that
+    talks only to localhost. There is no cloud LLM provider — see
+    docs/local-ai.md and CLAUDE.md.
     """
 
     DISABLED = "disabled"
+    EMBEDDED = "embedded"
     OLLAMA = "ollama"
 
 
@@ -77,11 +78,19 @@ class Settings(BaseSettings):
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""
 
-    ai_provider: AIProvider = AIProvider.DISABLED
+    # ``embedded`` is the zero-configuration Community default.  It still
+    # performs no AI work unless a user explicitly ticks the AI-assistance
+    # option for an upload.  The managed runtime/model may be pre-bundled by
+    # a release or installed once through ``threnda ai install`` / Settings.
+    ai_provider: AIProvider = AIProvider.EMBEDDED
     ai_model: str = ""
     ai_base_url: str = "http://127.0.0.1:11434"
-    ai_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    ai_timeout_seconds: float = Field(default=30.0, gt=0, le=30)
     ai_max_input_characters: int = Field(default=50_000, ge=1000, le=200_000)
+    ai_data_dir: str = "./data/ai"
+    ai_bundle_dir: str = ""
+    ai_embedded_port: int = Field(default=11435, ge=1024, le=65535)
+    ai_startup_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
     # Hard cap on request body size, enforced at the ASGI layer (see
     # threnda.app.core.middleware) before any upload is parsed — this is an
     # operational safety limit against resource exhaustion, not a cap on how

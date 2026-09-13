@@ -33,6 +33,19 @@ application. Open **http://localhost:8080** and log in.
 No manual database setup is required — this is the "no manual database
 configuration" target from `docs/community-v0.1-spec.md`.
 
+## Built-in Local AI
+
+Local AI is optional and does not require a separate Ollama installation.
+After signing in as an admin, open **Settings → Local AI** and click
+**Install Local AI**. Threnda downloads and checksum-verifies its pinned
+llama.cpp runtime and Qwen model into the existing `threnda-app-data` volume.
+The download is approximately 4.7 GB and survives normal container upgrades.
+
+For non-interactive or air-gapped setup, see `docs/local-ai.md` and
+`threnda ai install --bundle`. On macOS, running Threnda natively gives the
+embedded runtime Metal acceleration. A Docker Desktop container uses the
+Linux CPU runtime because Metal is not exposed inside the container.
+
 ## Bootstrapping the first admin
 
 There is no self-registration page anywhere in Threnda. The first account is

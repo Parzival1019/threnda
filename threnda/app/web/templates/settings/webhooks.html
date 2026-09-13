@@ -2,6 +2,7 @@
 {% block title %}Webhooks{% endblock %}
 {% block page_title %}Webhooks{% endblock %}
 {% block content %}
+{% with current_settings="webhooks" %}{% include "settings/_nav.html" %}{% endwith %}
 <div class="page-header">
   <h2>Outbound webhooks</h2>
   <p>Disabled by default. Delivery is manual — click "Send test delivery" to

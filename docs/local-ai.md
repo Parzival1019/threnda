@@ -1,112 +1,121 @@
-# Optional local AI (Milestone 6)
+# Built-in Local AI
 
-This document describes `threnda/app/services/ai/provider.py` as actually
-implemented, per CLAUDE.md's "Optional local AI only" / "No external LLM
-requirement" rules. Covered by `tests/test_ai_provider.py` and the AI
-opt-in tests in `tests/test_documents_processing.py`.
+Threnda Community includes a managed local-AI path. Users do not need to
+install Ollama, create a cloud account, select a model, or know how an
+inference server works. AI actions remain optional: the application performs
+no model inference unless a user explicitly requests AI assistance.
 
-**AI is disabled by default and entirely optional.** Threnda runs fully
-offline, with every Milestone 1–6 feature working normally, whether or not
-AI is ever configured. There is no cloud LLM provider, and there will not
-be one — the only supported backend is a local [Ollama](https://ollama.com)
-instance you already run yourself.
+The implementation is in `threnda/app/services/ai/embedded.py` and
+`threnda/app/services/ai/provider.py`. It is covered by
+`tests/test_embedded_ai.py`, `tests/test_ai_provider.py`, and the document
+processing tests.
+
+## User experience
+
+An admin opens **Settings → Local AI** and clicks **Install Local AI**. Threnda
+then installs its pinned runtime and model into the application data directory.
+The page shows installation state and offers a safe synthetic connection test.
+
+The equivalent non-interactive command is:
+
+```bash
+threnda ai install
+threnda ai status
+```
+
+The normal small distribution downloads about 4.7 GB once. An air-gapped
+distribution can include the exact same files in an offline bundle and run:
+
+```bash
+threnda ai install --bundle /path/to/threnda-ai-bundle
+```
+
+No downloaded executable or model is trusted by filename alone. Every artifact
+has a pinned byte size and SHA-256 digest; installation stops if either differs.
+Archive paths are validated before extraction.
+
+## Included components
+
+- **Runtime:** llama.cpp `b10516`, distributed under MIT, with official
+  prebuilt packages for macOS Apple Silicon, macOS Intel, Linux x64 and Linux
+  ARM64.
+- **Model:** the official Qwen `Qwen2.5-7B-Instruct-GGUF` Q4_K_M release,
+  revision-pinned and distributed under Apache-2.0. It is split into two GGUF
+  files totalling approximately 4.7 GB.
+- **Acceleration:** the macOS package uses Metal through llama.cpp. Linux uses
+  the matching official CPU package in the Community bundle.
+
+The third-party runtime license is retained inside the installed runtime, and
+the checksum-pinned model license is installed beside the GGUF files. See
+`THIRD_PARTY_NOTICES.md`. This does not select a license for Threnda itself;
+that owner decision is still pending.
+
+## Runtime lifecycle
+
+The model server is not a separate user-managed application:
+
+1. `EmbeddedAIProvider` is constructed only for an explicitly requested AI
+   action.
+2. `ensure_embedded_ai_running` starts the bundled `llama-server`, bound to
+   `127.0.0.1` on the configured port.
+3. Threnda waits for the server's `/health` endpoint before sending data.
+4. The model remains available for later requests in the same application
+   process.
+5. The FastAPI lifespan and an `atexit` guard terminate the managed child
+   process when Threnda stops.
+
+The embedded provider calls the loopback-only OpenAI-compatible
+`/v1/chat/completions` endpoint. There is no OpenAI service or API key involved;
+this is only llama.cpp's local protocol.
+
+## Safety and privacy boundaries
+
+- The server binds to loopback, never `0.0.0.0`.
+- No telemetry or cloud inference provider exists in Community.
+- Untrusted document text is clipped to the configured input limit and wrapped
+  in explicit data markers.
+- Responses are bounded to 1 MB and parsed as JSON.
+- Finding lists are capped at 100 candidates; title, excerpt, severity and
+  confidence are validated before persistence.
+- Model output is inert advisory text. It is never executed, interpolated into
+  a query, or treated as authorization.
+- Every AI candidate is visibly marked machine-generated and requires the same
+  manual accept/reject flow as a heuristic candidate.
+- AI never calculates the authoritative risk score, changes finding state, or
+  merges records.
+- A missing, failed, or slow model never fails ordinary document processing;
+  heuristic candidates remain available.
 
 ## Configuration
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `THRENDA_AI_PROVIDER` | `disabled` | `disabled` or `ollama`. |
-| `THRENDA_AI_MODEL` | *(empty)* | Required (non-blank) when `ollama` is selected. |
-| `THRENDA_AI_BASE_URL` | `http://127.0.0.1:11434` | Must resolve to `127.0.0.1`/`localhost`/`::1`; no credentials, query string, or fragment. Enforced at config-load time (`threnda.app.core.config.Settings.validate_local_ai_url`) *and* again inside `OllamaAIProvider.__init__` — defense in depth, not redundancy for its own sake. |
-| `THRENDA_AI_TIMEOUT_SECONDS` | `5` | `(0, 30]`. |
-| `THRENDA_AI_MAX_INPUT_CHARACTERS` | `50000` | `[1000, 200000]`. Untrusted document text is clipped to this length before being sent to the model. |
+| `THRENDA_AI_PROVIDER` | `embedded` | `embedded`, `disabled`, or the developer compatibility option `ollama`. |
+| `THRENDA_AI_DATA_DIR` | `./data/ai` | Persistent managed runtime/model directory. Compose maps this under its existing application-data volume. |
+| `THRENDA_AI_BUNDLE_DIR` | *(empty)* | Optional directory containing verified offline artifacts. |
+| `THRENDA_AI_EMBEDDED_PORT` | `11435` | Loopback port used by the private managed server. |
+| `THRENDA_AI_STARTUP_TIMEOUT_SECONDS` | `120` | Maximum initial model-load wait, from `(0, 600]`. |
+| `THRENDA_AI_TIMEOUT_SECONDS` | `30` | Inference request timeout, from `(0, 30]`. |
+| `THRENDA_AI_MAX_INPUT_CHARACTERS` | `50000` | Untrusted input cap, from `1000` to `200000`. |
 
-See `.env.example` for the exact placeholder values.
+`THRENDA_AI_PROVIDER=disabled` retains the verified zero-I/O provider. The
+application still works fully without the model files.
 
-## `AIProvider` interface
+## Ollama compatibility
 
-```python
-class AIProvider(Protocol):
-    def summarize_finding(self, text: str) -> AIResult: ...
-    def explain_finding(self, text: str) -> AIResult: ...
-    def suggest_remediation(self, text: str) -> AIResult: ...
-    def extract_findings_from_text(self, text: str) -> tuple[AICandidate, ...]: ...
-    def compare_findings(self, left: str, right: str) -> AIResult: ...
-```
+`THRENDA_AI_PROVIDER=ollama` remains available for developers who already run
+Ollama. It requires `THRENDA_AI_MODEL` and a loopback-only
+`THRENDA_AI_BASE_URL`; non-local URLs, embedded credentials, query strings and
+fragments are rejected. Ordinary Threnda Community users do not need this mode.
 
-`AIResult.machine_generated` and `AICandidate.machine_generated` are always
-`True` — callers never need to guess whether output came from a model; see
-`docs/pentest-and-ai.md` for how this becomes a visible "AI GENERATED"
-label and never bypasses human review.
+## Current limits
 
-## `DisabledAIProvider` — the default
-
-Every method raises `AIUnavailableError` immediately, before anything else
-runs. **Zero I/O** — `tests/test_ai_provider.py` verifies this by patching
-`urlopen` and asserting it is never called for any of the five methods.
-This is what makes "AI disabled" a real, verifiable guarantee rather than a
-policy statement: there is no code path in `DisabledAIProvider` that can
-reach the network.
-
-## `OllamaAIProvider` — the only network-capable provider
-
-`threnda/app/services/ai/provider.py::OllamaAIProvider`. A minimal client
-for Ollama's `/api/generate` endpoint, using only Python's standard-library
-`urllib` — no HTTP client dependency was added for this.
-
-- **Localhost enforcement**: the constructor re-validates the base URL's
-  hostname even though `Settings` already did, so calling
-  `OllamaAIProvider(...)` directly (e.g. in a test, or from future code)
-  can never bypass the restriction by skipping `Settings`.
-- **Prompt construction**: untrusted document text is wrapped in an
-  explicit instruction to the model plus `---BEGIN/END UNTRUSTED DATA---`
-  markers around the text itself (`OllamaAIProvider._generate`). This is a
-  hint to a cooperative model, not a security boundary — the real boundary
-  is that *nothing* the model returns is trusted without the schema
-  validation described next, and no returned text is ever executed,
-  templated, or used to build a query — only ever copied into a labelled,
-  advisory string field.
-- **Response validation**: every response is schema-checked before use.
-  `_generate` bounds the read to `MAX_RESPONSE_BYTES` (1,000,000) and
-  rejects anything larger, rejects non-JSON, and rejects a missing
-  `response` envelope key. `_text_result` requires a `{"text": str}` shape
-  with non-empty, non-oversized (&le;20,000 char) text.
-  `extract_findings_from_text` requires `{"findings": [...]}`, caps the
-  list at 100 items, and validates every item's `title` (non-empty,
-  &le;500 chars), `excerpt` (non-empty, &le;5000 chars), and `confidence`
-  (a number in `[0, 1]`) — any violation raises `AIUnavailableError` for
-  the whole call rather than silently coercing bad data.
-- **Failure handling**: `HTTPError`, `URLError`, `TimeoutError`, and any
-  other `OSError` from the transport are all reported as one
-  `AIUnavailableError` ("Local Ollama is unavailable or timed out") —
-  callers only ever need to handle one exception type, and Threnda keeps
-  functioning normally (heuristic candidates are unaffected) whether Ollama
-  is running or not.
-- **Misconfiguration** (e.g. a blank `THRENDA_AI_MODEL` with `ollama`
-  selected) is also reported as `AIUnavailableError`, via
-  `build_ai_provider` — never a raw `ValueError` reaching a route handler.
-  See `tests/test_ai_provider.py::test_build_ai_provider_wraps_misconfiguration_as_ai_unavailable`.
-
-## Testing strategy
-
-Every `OllamaAIProvider` test in `tests/test_ai_provider.py` patches
-`threnda.app.services.ai.provider.urlopen` — there is no real Ollama
-dependency anywhere in the test suite or in CI. Covered: happy path for
-all five methods, oversized/invalid/non-JSON/missing-key responses,
-timeouts and transport errors, the 100-candidate cap, per-candidate schema
-validation, input clipping at `THRENDA_AI_MAX_INPUT_CHARACTERS`, localhost
-enforcement (including sneaky non-localhost hostnames like
-`127.0.0.1.evil.test` and `localhost.evil.test`), and that a
-prompt-injection-shaped input or response is only ever treated as inert,
-schema-validated string data.
-
-## What this milestone does not add
-
-- No cloud LLM provider, and no configuration path to one — `Settings`
-  rejects any `THRENDA_AI_BASE_URL` that isn't loopback.
-- No AI-driven risk scoring — `docs/risk-scoring.md`'s engine remains
-  entirely deterministic and rule-based; AI never touches
-  `Exposure.risk_score`.
-- No AI-driven auto-acceptance of candidates — see `docs/pentest-and-ai.md`,
-  "Mandatory human review".
-- No telemetry of any kind sent about AI usage, on or off.
+- The managed bundle currently supports macOS arm64/x64 and Linux arm64/x64.
+  Windows packaging is not yet included.
+- Model installation requires around 5 GB of disk space and an internet
+  connection unless the release includes an offline bundle.
+- A containerized macOS deployment cannot use Metal from inside its Linux
+  container; native macOS development gets hardware acceleration. The CPU path
+  remains functional in Docker but is slower.
+- There is no OCR. Image-only PDFs still require text extraction before either
+  heuristic or AI-assisted review can work.

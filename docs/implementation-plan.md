@@ -804,7 +804,7 @@ Acceptance criteria:
 - [x] `AIProvider` interface: `summarize_finding`, `explain_finding`,
       `suggest_remediation`, `extract_findings_from_text`,
       `compare_findings` (`threnda/app/services/ai/provider.py`).
-- [x] `DisabledAIProvider` (default, verified zero-I/O) and
+- [x] `DisabledAIProvider` (the Milestone 6 default, verified zero-I/O) and
       `OllamaAIProvider` (`THRENDA_AI_PROVIDER=ollama`,
       `THRENDA_AI_MODEL=<model>`, `THRENDA_AI_BASE_URL` restricted to
       loopback), calling a local Ollama instance only — no cloud LLM calls
@@ -831,6 +831,10 @@ Acceptance criteria:
       `tests/test_documents_processing.py`,
       `tests/test_service_documents_review.py`, `tests/test_ai_provider.py`,
       `tests/test_api_documents.py`, `tests/test_web_documents.py`.
+
+Milestone 8 later supersedes Ollama as the current Community default with a
+Threnda-managed llama.cpp/Qwen bundle while preserving both Milestone 6
+providers as explicit compatibility options.
 
 ### Design decisions made in this milestone
 
@@ -1184,3 +1188,33 @@ final code, in this order:
   entirely on `feat/community-v0.1`, committed locally in small
   conventional commits (see `git log`) — pushing/merging/opening a PR is
   the owner's call, not done automatically here.
+
+## Milestone 8 — self-contained Local AI
+
+Status: implemented, pending owner review.
+
+- [x] `EmbeddedAIProvider` is now the zero-configuration provider default;
+      AI actions themselves remain explicit and optional.
+- [x] Threnda manages a pinned llama.cpp `b10516` runtime and the official
+      Qwen2.5 7B Instruct Q4_K_M GGUF model. macOS arm64/x64 and Linux
+      arm64/x64 packages are selected automatically.
+- [x] Runtime and model downloads are revision-pinned, byte-size checked and
+      SHA-256 verified before use. Runtime archives are path-validated before
+      extraction.
+- [x] `threnda ai install`, `threnda ai status`, and an admin-only
+      **Settings → Local AI** page provide installation, status and a
+      synthetic connection test without requiring Ollama or a cloud account.
+- [x] Offline bundles are accepted through `threnda ai install --bundle` or
+      `THRENDA_AI_BUNDLE_DIR`, using the same verification path as downloads.
+- [x] The managed llama-server binds only to loopback, starts lazily for an AI
+      request, and is terminated by both FastAPI lifespan cleanup and an
+      `atexit` guard.
+- [x] Structured output remains schema-validated, bounded, visibly labelled
+      and subject to mandatory human review. AI still cannot calculate the
+      authoritative risk score or mutate/merge records on its own.
+- [x] Ollama remains only as an explicitly selected developer compatibility
+      provider; ordinary Community users do not need it.
+- [x] Hermetic tests cover provider selection, loopback transport, tampered
+      artifacts, archive traversal, unsupported platforms, the settings page
+      and CSRF protection. A real Apple Silicon smoke test loaded the bundled
+      model through llama.cpp/Metal and extracted a synthetic critical finding.

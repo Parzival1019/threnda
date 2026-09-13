@@ -54,6 +54,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
+        from threnda.app.services.ai.embedded import shutdown_embedded_ai
+
+        shutdown_embedded_ai()
         engine.dispose()
 
     app = FastAPI(

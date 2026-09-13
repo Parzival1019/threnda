@@ -1,7 +1,7 @@
 """``threnda`` command-line entry point.
 
-Currently one subcommand: ``bootstrap-admin`` — see docs/deployment.md,
-"Bootstrapping the first admin". This is deliberately the *only* way a
+Includes ``bootstrap-admin`` plus the managed local-AI lifecycle commands.
+Bootstrap is deliberately the *only* way a
 Threnda instance ever gets its first account: there is no self-registration
 page anywhere in the web UI, and this command refuses to run a second time
 once any account exists.
@@ -13,6 +13,7 @@ import argparse
 import getpass
 import os
 import sys
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -123,6 +124,37 @@ def bootstrap_admin() -> int:
     return 0
 
 
+def ai_install(bundle: str | None = None) -> int:
+    from threnda.app.services.ai.embedded import EmbeddedAIError, install_embedded_ai
+
+    print("Installing Threnda Local AI (about 4.7 GB; this can take several minutes)…")
+    try:
+        status = install_embedded_ai(get_settings(), bundle_dir=Path(bundle) if bundle else None)
+    except EmbeddedAIError as exc:
+        print(f"Local AI installation failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Local AI ready: {status.model} / llama.cpp {status.runtime_version}")
+    return 0
+
+
+def ai_status() -> int:
+    from threnda.app.services.ai.embedded import status_dict
+
+    status = status_dict(get_settings())
+    for key in (
+        "supported",
+        "installed",
+        "running",
+        "installing",
+        "stage",
+        "model",
+        "runtime_version",
+        "error",
+    ):
+        print(f"{key}: {status[key]}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="threnda")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -130,10 +162,25 @@ def main(argv: list[str] | None = None) -> None:
         "bootstrap-admin",
         help="Create the first local admin account (one-time; refuses if any account exists).",
     )
+    ai_parser = subparsers.add_parser("ai", help="Manage Threnda's built-in local AI.")
+    ai_subparsers = ai_parser.add_subparsers(dest="ai_command", required=True)
+    install_parser = ai_subparsers.add_parser(
+        "install", help="Install the pinned local runtime and model."
+    )
+    install_parser.add_argument(
+        "--bundle",
+        help="Read verified artifacts from an offline bundle directory instead of downloading.",
+    )
+    ai_subparsers.add_parser("status", help="Show local-AI installation and runtime status.")
     args = parser.parse_args(argv)
 
     if args.command == "bootstrap-admin":
         raise SystemExit(bootstrap_admin())
+    if args.command == "ai":
+        if args.ai_command == "install":
+            raise SystemExit(ai_install(args.bundle))
+        if args.ai_command == "status":
+            raise SystemExit(ai_status())
 
 
 if __name__ == "__main__":

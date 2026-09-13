@@ -46,9 +46,13 @@ services:
       THRENDA_SECRET_KEY: ${THRENDA_SECRET_KEY:?Set THRENDA_SECRET_KEY in .env before running (see .env.example).}
       THRENDA_DATABASE_URL: postgresql+psycopg://threnda:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before running.}@db:5432/threnda
       THRENDA_MAX_UPLOAD_BYTES: ${THRENDA_MAX_UPLOAD_BYTES:-20971520}
-      THRENDA_AI_PROVIDER: ${THRENDA_AI_PROVIDER:-disabled}
+      THRENDA_AI_PROVIDER: ${THRENDA_AI_PROVIDER:-embedded}
       THRENDA_AI_MODEL: ${THRENDA_AI_MODEL:-}
       THRENDA_AI_BASE_URL: ${THRENDA_AI_BASE_URL:-http://127.0.0.1:11434}
+      THRENDA_AI_DATA_DIR: ${THRENDA_AI_DATA_DIR:-/app/data/ai}
+      THRENDA_AI_BUNDLE_DIR: ${THRENDA_AI_BUNDLE_DIR:-}
+      THRENDA_AI_EMBEDDED_PORT: ${THRENDA_AI_EMBEDDED_PORT:-11435}
+      THRENDA_AI_STARTUP_TIMEOUT_SECONDS: ${THRENDA_AI_STARTUP_TIMEOUT_SECONDS:-120}
       # One-time first-admin bootstrap (docs/deployment.md). Leave both
       # blank after the first successful run — bootstrap-admin refuses to
       # run a second time regardless, but there's no reason to keep a
