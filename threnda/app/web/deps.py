@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 
 from threnda.app import __version__
 from threnda.app.api.deps import get_db
-from threnda.app.models.enums import ExposureStatus, PossibleDuplicateStatus
+from threnda.app.models.candidate_finding import CandidateFinding
+from threnda.app.models.document import Document
+from threnda.app.models.enums import CandidateFindingStatus, ExposureStatus, PossibleDuplicateStatus
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.import_run import ImportRun
 from threnda.app.models.possible_duplicate import PossibleDuplicate
@@ -119,6 +121,17 @@ def build_shell_context(db: Session, workspace: Workspace) -> dict[str, Any]:
         .order_by(ImportRun.started_at.desc())
         .limit(1)
     ).scalar_one_or_none()
+    document_count = db.execute(
+        select(func.count()).select_from(Document).where(Document.workspace_id == workspace.id)
+    ).scalar_one()
+    candidate_count = db.execute(
+        select(func.count())
+        .select_from(CandidateFinding)
+        .where(
+            CandidateFinding.workspace_id == workspace.id,
+            CandidateFinding.status == CandidateFindingStatus.PENDING,
+        )
+    ).scalar_one()
 
     return {
         "workspace": workspace,
@@ -126,6 +139,8 @@ def build_shell_context(db: Session, workspace: Workspace) -> dict[str, Any]:
         "nav_review_count": review_count,
         "nav_source_count": source_count,
         "nav_import_count": import_count,
+        "nav_document_count": document_count,
+        "nav_candidate_count": candidate_count,
         "footer_source_count": source_count,
         "footer_last_import": last_import,
         "app_version": __version__,

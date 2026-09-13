@@ -28,12 +28,18 @@ from threnda.app.services.ingestion.base import (
 )
 from threnda.app.services.ingestion.csv_importer import CsvImporter
 from threnda.app.services.ingestion.json_importer import JsonImporter
+from threnda.app.services.ingestion.pentest_importer import PentestImporter
 from threnda.app.services.ingestion.runner import compute_file_hash, persist_parsed_import
 from threnda.app.services.ingestion.sarif_importer import SarifImporter
 
 MAX_FILENAME_LENGTH = 255
 
-SUPPORTED_SOURCE_TYPES = {SourceType.CSV, SourceType.JSON, SourceType.SARIF}
+SUPPORTED_SOURCE_TYPES = {
+    SourceType.CSV,
+    SourceType.JSON,
+    SourceType.SARIF,
+    SourceType.PENTEST_REPORT,
+}
 
 
 class UnsupportedSourceTypeError(Exception):
@@ -112,6 +118,8 @@ def build_importer(source: Source, csv_mapping: dict[str, str] | None) -> Import
         return JsonImporter()
     if source.source_type == SourceType.SARIF:
         return SarifImporter()
+    if source.source_type == SourceType.PENTEST_REPORT:
+        return PentestImporter()
     raise UnsupportedSourceTypeError(source.source_type)
 
 

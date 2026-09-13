@@ -13,7 +13,7 @@
   {% if not sources %}
   <div class="empty-state">
     <h3>No compatible sources yet</h3>
-    <p>Create a CSV, JSON or SARIF source first — it names the scanner and its format.</p>
+    <p>Create a CSV, JSON, SARIF, or pentest-report source first — it names the source and format.</p>
     <div class="actions">
       <a class="btn btn-primary" href="/sources?workspace_id={{ workspace.id }}">Add a source</a>
     </div>
@@ -41,7 +41,7 @@
                hx-post="/imports/sniff" hx-target="#mapping-area" hx-swap="innerHTML"
                hx-encoding="multipart/form-data" hx-trigger="change"
                hx-include="[name='source_id'],[name='file']">
-        <div class="hint">CSV, JSON, or SARIF — whichever the selected source is configured for.</div>
+        <div class="hint">CSV, JSON, SARIF, or structured pentest JSON — matching the selected source.</div>
       </div>
     </div>
 

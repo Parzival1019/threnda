@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+{% block title %}Document review{% endblock %}
+{% block page_title %}Pentest document review{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Local extraction</h2>
+  <p>PDF/TXT content is processed on this host. Every extracted item stays a candidate until you accept it.</p>
+  <p class="mono" style="color:var(--text-muted)">{{ nav_document_count }} document(s) uploaded · {{ nav_candidate_count }} pending review</p>
+</div>
+
+{% if error %}<div class="notice" style="border-color:var(--critical);margin:16px 0">{{ error }}</div>{% endif %}
+{% if notice %}<div class="notice" style="margin:16px 0">{{ notice }}</div>{% endif %}
+
+{% if sources %}
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:820px;padding:18px;margin-top:16px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="field-row">
+    <div class="field"><label for="document-source">Pentest source</label>
+      <select id="document-source" name="source_id" required>{% for source in sources %}<option value="{{ source.id }}">{{ source.name }}</option>{% endfor %}</select>
+    </div>
+    <div class="field"><label for="document-file">PDF, TXT, or Markdown</label><input id="document-file" type="file" name="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" required></div>
+  </div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" name="use_ai"> Ask configured local Ollama for additional candidates <span class="mono" style="color:var(--text-muted)">(optional)</span></label>
+  <div class="notice" style="margin:14px 0"><span class="dot"></span><div>Document text is untrusted data. Heuristics and AI can only propose labelled candidates; neither can change findings.</div></div>
+  <button class="btn btn-primary" type="submit">Extract locally</button>
+</form>
+{% else %}
+<div class="empty-state"><h3>No pentest-report source</h3><p>Create a source with type <span class="mono">pentest_report</span> first.</p><a class="btn btn-primary" href="/sources?workspace_id={{ workspace.id }}">Add source</a></div>
+{% endif %}
+
+{% for document in documents %}
+<section class="card" style="max-width:980px;margin-top:18px">
+  <div class="card-row"><div style="flex:1"><strong>{{ document.filename }}</strong><div class="mono" style="font-size:10.5px;color:var(--text-muted)">{{ document.content_type.value }} · {{ document.page_count or 0 }} page(s) · {{ document.status.value }}</div></div><span class="mono">{{ document.candidates|length }} candidates</span></div>
+  {% if document.error_message %}<div class="notice" style="margin:10px">{{ document.error_message }}</div>{% endif %}
+  {% for candidate in document.candidates if candidate.status.value == 'pending' %}
+  <div class="card-row" style="align-items:flex-start;gap:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:320px">
+      <div>{% if candidate.ai_assisted %}<span class="badge">AI GENERATED · {{ candidate.ai_model }}</span>{% else %}<span class="badge">HEURISTIC</span>{% endif %} <span class="mono">{{ "%.0f"|format(candidate.confidence * 100) }}% confidence</span></div>
+      <strong style="display:block;margin-top:7px">{{ candidate.extracted_title }}</strong>
+      <div class="mono" style="font-size:10.5px;color:var(--text-muted)">page {{ candidate.page_number or '—' }} · lines {{ candidate.line_start or '—' }}–{{ candidate.line_end or '—' }}</div>
+      <pre style="white-space:pre-wrap;max-height:180px;overflow:auto;margin-top:8px">{{ candidate.excerpt }}</pre>
+      {% for issue in candidate.validation_issues %}<div style="font-size:11px;color:var(--text-muted)">• {{ issue }}</div>{% endfor %}
+    </div>
+    <div style="min-width:250px">
+      <form method="post" action="/documents/candidates/{{ candidate.id }}/accept">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Reviewed title<input name="title" value="{{ candidate.extracted_title }}" maxlength="500" required></label><label>Severity<select name="severity" required><option value="">Choose…</option>{% for sev in severities %}<option value="{{ sev.value }}" {% if candidate.extracted_severity == sev %}selected{% endif %}>{{ sev.value }}</option>{% endfor %}</select></label><button class="btn btn-primary" type="submit">Accept as finding</button>
+      </form>
+      <form method="post" action="/documents/candidates/{{ candidate.id }}/reject" style="margin-top:8px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-secondary" type="submit">Reject candidate</button></form>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}

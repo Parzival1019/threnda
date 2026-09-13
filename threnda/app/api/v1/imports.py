@@ -60,7 +60,9 @@ def list_imports(
 async def create_import(
     workspace_id: int = Query(..., description="Workspace this import belongs to."),
     source_id: int = Form(..., description="Source (within that workspace) this upload is for."),
-    file: UploadFile = File(..., description="The CSV, JSON or SARIF file to import."),
+    file: UploadFile = File(
+        ..., description="The CSV, JSON, SARIF, or structured pentest JSON file to import."
+    ),
     csv_mapping: str | None = Form(
         default=None,
         description=(

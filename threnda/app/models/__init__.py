@@ -10,6 +10,8 @@ resolve.
 from __future__ import annotations
 
 from threnda.app.models.asset import Asset
+from threnda.app.models.candidate_finding import CandidateFinding
+from threnda.app.models.document import Document
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.exposure_history import ExposureHistory
 from threnda.app.models.finding import Finding
@@ -20,6 +22,8 @@ from threnda.app.models.workspace import Workspace
 
 __all__ = [
     "Asset",
+    "CandidateFinding",
+    "Document",
     "Exposure",
     "ExposureHistory",
     "Finding",

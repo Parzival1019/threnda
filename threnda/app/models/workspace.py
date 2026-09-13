@@ -19,6 +19,8 @@ from threnda.app.models.types import UTCDateTime
 
 if TYPE_CHECKING:
     from threnda.app.models.asset import Asset
+    from threnda.app.models.candidate_finding import CandidateFinding
+    from threnda.app.models.document import Document
     from threnda.app.models.exposure import Exposure
     from threnda.app.models.finding import Finding
     from threnda.app.models.import_run import ImportRun
@@ -49,6 +51,12 @@ class Workspace(Base):
         back_populates="workspace", cascade="all, delete-orphan"
     )
     possible_duplicates: Mapped[list[PossibleDuplicate]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+    documents: Mapped[list[Document]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+    candidate_findings: Mapped[list[CandidateFinding]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan"
     )
 

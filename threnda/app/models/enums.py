@@ -150,3 +150,35 @@ class PossibleDuplicateStatus(enum.StrEnum):
     PENDING = "pending"
     MERGED = "merged"
     KEPT_SEPARATE = "kept_separate"
+
+
+class DocumentContentType(enum.StrEnum):
+    """What kind of file a ``Document`` was extracted from."""
+
+    PDF = "pdf"
+    TEXT = "text"
+
+
+class DocumentStatus(enum.StrEnum):
+    """Outcome of a ``Document``'s local text extraction.
+
+    See docs/pentest-and-ai.md — extraction is deterministic and entirely
+    local; ``FAILED`` covers a malformed/encrypted/unreadable file, not
+    anything about the candidates later derived from the text.
+    """
+
+    PROCESSED = "processed"
+    FAILED = "failed"
+
+
+class CandidateFindingStatus(enum.StrEnum):
+    """Review state of a ``CandidateFinding``.
+
+    Mirrors ``PossibleDuplicateStatus``: a candidate — heuristic or
+    AI-assisted — is never automatically promoted to a real ``Finding``.
+    See docs/pentest-and-ai.md, "Mandatory human review".
+    """
+
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"

@@ -195,6 +195,7 @@ def persist_parsed_import(
     filename: str,
     raw: bytes,
     parsed: ParsedImport,
+    infer_resolved: bool = True,
 ) -> ImportRun:
     duplicate_identities = find_duplicate_source_finding_ids(parsed.findings)
     if duplicate_identities:
@@ -310,7 +311,7 @@ def persist_parsed_import(
     # absence-based RESOLVED step for this run; the successfully-parsed
     # records above are still fully processed either way.
     resolved_count = 0
-    if not parsed.errors:
+    if infer_resolved and not parsed.errors:
         for identity, finding in active_by_identity.items():
             if identity not in seen_identities:
                 finding.resolved_at = now

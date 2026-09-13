@@ -40,6 +40,11 @@
         <span>Review</span>
         <span class="count" id="nav-review-count">{{ nav_review_count }}</span>
       </a>
+      <a class="nav-item" href="/documents?workspace_id={{ workspace.id }}"
+         {% if active_nav == 'documents' %}aria-current="page"{% endif %}>
+        <span>Documents</span>
+        <span class="count" id="nav-document-count">{{ nav_candidate_count }}</span>
+      </a>
     </nav>
     <div class="sidebar-footer">
       <a href="/?workspace_id={{ workspace.id }}" class="mono" style="font-size:11.5px;color:var(--text-secondary)">Dashboard</a>

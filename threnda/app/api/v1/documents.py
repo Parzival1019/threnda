@@ -1,0 +1,158 @@
+"""Local document extraction and explicit candidate review API."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from threnda.app.api.deps import get_db
+from threnda.app.models.candidate_finding import CandidateFinding
+from threnda.app.models.document import Document
+from threnda.app.models.enums import CandidateFindingStatus
+from threnda.app.models.source import Source
+from threnda.app.schemas.document import (
+    CandidateDecision,
+    CandidateRead,
+    DocumentDetailRead,
+    DocumentRead,
+)
+from threnda.app.services.documents.processing import UnsupportedDocumentError, process_document
+from threnda.app.services.documents.review import (
+    CandidateAlreadyResolvedError,
+    CandidateNotFoundError,
+    accept_candidate,
+    reject_candidate,
+)
+
+router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+@router.get("", response_model=list[DocumentRead])
+def list_documents(
+    workspace_id: int = Query(...), db: Session = Depends(get_db)
+) -> list[DocumentRead]:
+    rows = db.execute(
+        select(Document)
+        .where(Document.workspace_id == workspace_id)
+        .order_by(Document.created_at.desc())
+    ).scalars()
+    return [DocumentRead.model_validate(row) for row in rows]
+
+
+@router.get("/{document_id}", response_model=DocumentDetailRead)
+def get_document(
+    document_id: int,
+    workspace_id: int = Query(...),
+    db: Session = Depends(get_db),
+) -> DocumentDetailRead:
+    document = db.execute(
+        select(Document)
+        .where(Document.id == document_id, Document.workspace_id == workspace_id)
+        .options(selectinload(Document.candidates))
+    ).scalar_one_or_none()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return DocumentDetailRead.model_validate(document)
+
+
+@router.post("", response_model=DocumentDetailRead, status_code=201)
+async def upload_document(
+    request: Request,
+    workspace_id: int = Query(...),
+    source_id: int = Form(...),
+    file: UploadFile = File(...),
+    use_ai: bool = Form(default=False),
+    db: Session = Depends(get_db),
+) -> DocumentDetailRead | JSONResponse:
+    source = db.get(Source, source_id)
+    if source is None or source.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Source not found in this workspace")
+    raw = await file.read()
+    try:
+        document = process_document(
+            db,
+            workspace_id=workspace_id,
+            source=source,
+            filename=file.filename,
+            media_type=file.content_type,
+            raw=raw,
+            ai_settings=request.app.state.settings,
+            use_ai=use_ai,
+        )
+    except (UnsupportedDocumentError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.flush()
+    db.refresh(document)
+    if document.status.value == "failed":
+        return JSONResponse(
+            status_code=422,
+            content={"detail": document.error_message, "document_id": document.id},
+        )
+    return get_document(document.id, workspace_id, db)
+
+
+@router.get("/{document_id}/candidates", response_model=list[CandidateRead])
+def list_candidates(
+    document_id: int,
+    workspace_id: int = Query(...),
+    status: CandidateFindingStatus | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> list[CandidateRead]:
+    document = db.get(Document, document_id)
+    if document is None or document.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+    stmt = select(CandidateFinding).where(
+        CandidateFinding.workspace_id == workspace_id,
+        CandidateFinding.document_id == document_id,
+    )
+    if status is not None:
+        stmt = stmt.where(CandidateFinding.status == status)
+    rows = db.execute(stmt.order_by(CandidateFinding.id)).scalars()
+    return [CandidateRead.model_validate(row) for row in rows]
+
+
+def _decision_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, CandidateNotFoundError):
+        return HTTPException(status_code=404, detail="Candidate not found")
+    if isinstance(exc, CandidateAlreadyResolvedError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/candidates/{candidate_id}/accept", response_model=CandidateRead)
+def accept(
+    candidate_id: int,
+    payload: CandidateDecision,
+    workspace_id: int = Query(...),
+    db: Session = Depends(get_db),
+) -> CandidateRead:
+    try:
+        candidate = accept_candidate(
+            db,
+            workspace_id=workspace_id,
+            candidate_id=candidate_id,
+            actor=payload.actor,
+            title=payload.title,
+            severity=payload.severity,
+        )
+    except (CandidateNotFoundError, CandidateAlreadyResolvedError, ValueError) as exc:
+        raise _decision_error(exc) from exc
+    return CandidateRead.model_validate(candidate)
+
+
+@router.post("/candidates/{candidate_id}/reject", response_model=CandidateRead)
+def reject(
+    candidate_id: int,
+    payload: CandidateDecision,
+    workspace_id: int = Query(...),
+    db: Session = Depends(get_db),
+) -> CandidateRead:
+    try:
+        candidate = reject_candidate(
+            db, workspace_id=workspace_id, candidate_id=candidate_id, actor=payload.actor
+        )
+    except (CandidateNotFoundError, CandidateAlreadyResolvedError) as exc:
+        raise _decision_error(exc) from exc
+    return CandidateRead.model_validate(candidate)

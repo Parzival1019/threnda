@@ -43,7 +43,12 @@ from threnda.app.web.deps import build_shell_context, get_current_workspace, tem
 router = APIRouter(prefix="/imports", tags=["web-imports"])
 
 PAGE_SIZE = 50
-UPLOADABLE_SOURCE_TYPES = (SourceType.CSV, SourceType.JSON, SourceType.SARIF)
+UPLOADABLE_SOURCE_TYPES = (
+    SourceType.CSV,
+    SourceType.JSON,
+    SourceType.SARIF,
+    SourceType.PENTEST_REPORT,
+)
 
 
 def _read_csv_header(raw: bytes) -> list[str] | None:

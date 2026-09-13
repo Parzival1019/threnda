@@ -11,6 +11,7 @@ from __future__ import annotations
 import enum
 from functools import lru_cache
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,10 +25,10 @@ class Environment(enum.StrEnum):
 class AIProvider(enum.StrEnum):
     """Which local AI backend, if any, Threnda should use.
 
-    AI is always optional. ``DISABLED`` is the default and the only
-    provider Threnda ships with today; ``OLLAMA`` is reserved for
-    Milestone 6 and is not implemented yet. There is no cloud LLM provider
-    and there will not be one — see CLAUDE.md.
+    AI is always optional and ``DISABLED`` by default. ``OLLAMA``
+    (``threnda.app.services.ai.provider.OllamaAIProvider``) talks only to a
+    localhost Ollama instance — see docs/local-ai.md. There is no cloud LLM
+    provider and there will not be one — see CLAUDE.md.
     """
 
     DISABLED = "disabled"
@@ -53,6 +54,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/threnda.db"
     ai_provider: AIProvider = AIProvider.DISABLED
     ai_model: str = ""
+    ai_base_url: str = "http://127.0.0.1:11434"
+    ai_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    ai_max_input_characters: int = Field(default=50_000, ge=1000, le=200_000)
     # Hard cap on request body size, enforced at the ASGI layer (see
     # threnda.app.core.middleware) before any upload is parsed — this is an
     # operational safety limit against resource exhaustion, not a cap on how
@@ -60,6 +64,23 @@ class Settings(BaseSettings):
     # large CSV/SARIF export while staying well short of memory pressure on
     # the 16 GB target machine.
     max_upload_bytes: int = 20 * 1024 * 1024
+
+    @field_validator("ai_base_url")
+    @classmethod
+    def validate_local_ai_url(cls, value: str) -> str:
+        """Ollama is deliberately localhost-only; cloud AI is out of scope."""
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or parsed.hostname not in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }:
+            raise ValueError("ai_base_url must point to localhost")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("ai_base_url must not contain credentials, query, or fragment")
+        return value.rstrip("/")
 
     @property
     def is_production(self) -> bool:
