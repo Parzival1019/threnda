@@ -285,7 +285,10 @@ see `docs/pentest-and-ai.md`.
   per-importer value; nothing yet correlates findings across imports into
   an `Exposure`.
 - User authentication — `workspace_id` remains caller-supplied, as in every
-  other Milestone 1/2 endpoint.
+  other Milestone 1/2 endpoint. **Superseded by Milestone 7**: every import
+  endpoint now requires an authenticated session with at least the
+  `analyst` role in the target workspace — see `docs/security.md`,
+  "Authorization".
 - The browser UI — this is an API-only milestone; provisioning a workspace
   and source, and uploading files, is done through the documented HTTP API
   (see `README.md` and the OpenAPI docs at `/docs`), not a web form.

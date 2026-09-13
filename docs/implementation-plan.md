@@ -861,26 +861,326 @@ Acceptance criteria:
 
 ## Milestone 7 — authentication, hardening, packaging, docs
 
-**Status: not started**
+**Status: done (implementation), pending owner review**
 
-Scope: local accounts, security hardening, Docker packaging, complete
-documentation, final test pass.
+Scope: local accounts, session-derived authorization replacing every
+caller-supplied `workspace_id`, CSRF/security-header hardening, an
+administrative audit log, CSV/JSON export, a generic SSRF-defended
+outbound webhook, Docker packaging, and the full documentation set.
 
 Acceptance criteria:
 
-- [ ] Local username/password accounts, secure password hashing, secure
-      session cookies; `workspace_id` scoping in Milestone 1's API replaced
-      by session-derived scoping.
-- [ ] CSRF protection, upload size limits, safe filenames, content
-      validation, no unsafe deserialization, no arbitrary shell execution.
-- [ ] Administrative changes audited; sensitive raw findings not logged
-      unnecessarily.
-- [ ] `Dockerfile` and `docker-compose.yml`: `docker compose up -d` then
-      `http://localhost:8080` with no manual database setup.
-- [ ] CSV/JSON export endpoints; generic outbound webhook mechanism
-      (delivery only — no vendor-specific integration).
-- [ ] `docs/architecture.md`, `docs/data-model.md`, `docs/importers.md`,
-      `docs/deduplication.md`, `docs/local-ai.md`, `docs/security.md`,
-      `docs/roadmap.md`; README quick start reproducible from a clean clone.
-- [ ] Full test suite green; the Definition of Done in
-      `docs/community-v0.1-spec.md` walked through end to end.
+- [x] Local username/password accounts (`threnda/app/models/user.py`),
+      Argon2id password hashing via `argon2-cffi`
+      (`threnda/app/services/auth.py`), secure session cookies
+      (`threnda_session`: `HttpOnly`, `SameSite=Strict`, `Secure` in
+      production/HTTPS) with opaque random tokens stored only as a
+      SHA-256 hash, idle (2h) and absolute (12h) expiry, rotation on
+      login, and explicit revocation on logout. Every workspace-scoped
+      API/web route now depends on `require_viewer`/`require_analyst`/
+      `require_admin` (`threnda/app/api/deps.py`,
+      `threnda/app/web/deps.py`) — a caller-supplied `workspace_id` is no
+      longer itself the authority; it only grants access once matched
+      against a `WorkspaceMembership` row for the authenticated session's
+      user. A workspace that doesn't exist and one the caller isn't a
+      member of both answer `404`, never `403`, so neither leaks whether
+      the other exists.
+- [x] First-admin bootstrap is explicit and one-time: `threnda
+      bootstrap-admin` (`threnda/app/cli.py`) refuses to run once any
+      account exists, refuses to run against an unmigrated database, reads
+      credentials from `THRENDA_BOOTSTRAP_ADMIN_USERNAME`/`_PASSWORD` (for
+      the Docker entrypoint) or prompts interactively via `getpass`
+      otherwise, and never invents a credential. `threnda/app/core/
+      startup_checks.py::validate_production_readiness` fails the whole
+      application closed at startup if `THRENDA_ENV=production` and
+      `THRENDA_SECRET_KEY` is missing, the placeholder `change-me`, under
+      32 characters, or if `THRENDA_ALLOW_INSECURE_COOKIES` is set.
+- [x] Workspace membership and roles: admin/analyst/viewer
+      (`threnda/app/models/enums.py::WorkspaceRole`), hierarchical
+      (`threnda.app.services.memberships.role_at_least`). Admin manages
+      members (`Settings → Members`, `/api/v1/members`) and webhooks;
+      analyst additionally operates findings/imports/documents/possible-
+      duplicates/exports; viewer is read-only. A workspace can never be
+      left with zero admins (`LastAdminError`). No superuser/global-admin
+      concept — an admin's authority never crosses a workspace boundary
+      they don't belong to.
+- [x] CSRF tokens cryptographically bound to the session
+      (`HMAC-SHA256(THRENDA_SECRET_KEY, "csrf:" + session_token)`,
+      `threnda/app/web/csrf.py`) on every state-changing web form; a
+      pre-session anonymous double-submit cookie covers the login form
+      itself. Baseline response security headers on every response
+      (`threnda/app/core/middleware.py::SecurityHeadersMiddleware`):
+      `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+      `Cross-Origin-Opener-Policy`, `Permissions-Policy`, and a
+      `Content-Security-Policy` with `script-src 'self'` (the UI has no
+      inline script/event-handler anywhere — the one inline `onclick=`
+      handler this milestone found was moved to a delegated listener in
+      `static/js/app.js` to keep that true). Upload caps, safe filenames,
+      content validation, no shell execution, no unsafe deserialization —
+      all unchanged from Milestones 2/6, still in effect.
+- [x] Administrative/security-sensitive changes audited
+      (`threnda/app/models/audit_log.py`, single write path
+      `threnda/app/services/audit.py`): account creation, login
+      success/failure, logout, membership add/role-change/remove, webhook
+      create/update/delete/delivery, export downloads. Routine
+      finding/exposure edits keep using the pre-existing `ExposureHistory`
+      trail rather than being duplicated here. `record_audit_event`
+      defensively rejects any `detail` key that looks like it could hold a
+      secret (`password`/`secret`/`token`/`session`/`authorization`/
+      `cookie`/`hash`), so raw findings, passwords, session tokens, and
+      webhook secrets are never logged anywhere, audit log included.
+- [x] `GET /api/v1/exports/exposures?format=csv|json`
+      (`threnda/app/services/exports.py`), analyst role or higher: a
+      stable, documented column schema (docs/exports.md), CSV
+      formula-injection safety (OWASP mitigation — a leading `'` on any
+      field starting with `=+-@`/tab/CR), keyset-paginated streaming (no
+      cap on row count, bounded memory per request), and an audit log
+      entry per download.
+- [x] Generic outbound webhook (`threnda/app/services/webhooks.py`,
+      `threnda/app/models/webhook_endpoint.py`): disabled by default,
+      created/enabled/triggered only by an admin, one synchronous signed
+      HTTP POST per explicit trigger (no automatic per-event delivery, no
+      queue — Community has no background worker). The signing secret is
+      encrypted at rest (Fernet, keyed from `THRENDA_SECRET_KEY`) and shown
+      to the admin exactly once, at creation. SSRF defense: HTTPS required
+      in production, resolved-address checking against
+      private/loopback/link-local/reserved/multicast/unspecified ranges
+      (covers the cloud metadata address as an ordinary link-local address)
+      both at save time and immediately before every delivery, redirects
+      never followed, strict timeout and a bounded response-read size.
+      `THRENDA_WEBHOOK_ALLOW_PRIVATE_TARGETS` is a documented
+      local-development/test-only override. See docs/webhooks.md,
+      docs/security.md ("Webhooks — SSRF defense") for the one documented
+      residual limitation (a narrow DNS-rebinding race between the
+      pre-delivery check and the connection a moment later).
+- [x] Docker packaging: a multi-stage, non-root `Dockerfile` (a builder
+      stage with a compiler for any wheel-less platform, a slim runtime
+      stage that drops root before the process runs) and a
+      `docker-compose.yml` running PostgreSQL, with healthchecks on both
+      services, automatic `alembic upgrade head` (and optional
+      bootstrap-admin) via `docker/entrypoint.sh` before the app ever
+      serves traffic, the app bound to `127.0.0.1:8080` on the host, named
+      volumes for both Postgres data and the app's `/app/data`, and no
+      hardcoded secret anywhere — `THRENDA_SECRET_KEY`/`POSTGRES_PASSWORD`
+      use Compose's `${VAR:?message}` interpolation, so `docker compose up`
+      refuses outright with a clear message if either is unset. Verified
+      with a real `docker compose up -d --build` from a clean `.env`
+      against the actual Dockerfile/compose file in this repository — see
+      "Verification" below.
+- [x] Complete documentation: `docs/architecture.md`, `docs/data-model.md`,
+      `docs/security.md` (accounts/roles/passwords/sessions/CSRF/response
+      headers/authorization/auditing/webhook SSRF/secret rotation/
+      fail-closed checks), `docs/roadmap.md`, `docs/deployment.md`
+      (bootstrap, TLS/reverse proxy, backup/restore, upgrades, a release
+      checklist), `docs/webhooks.md`, `docs/exports.md`; `docs/importers.md`
+      and `docs/pentest-and-ai.md` updated for the now-authenticated
+      contract (the `actor` field client-supplied on document
+      accept/reject is gone — it's always the session's username); README
+      quick start rewritten for both the Docker Compose path and local
+      Python development, including a real authenticated `curl` walkthrough
+      (session cookie via `-c`/`-b`) for provisioning, uploading, and
+      exporting. `.env.example` documents every new setting.
+- [x] Full local test suite green; Definition of Done from
+      `docs/community-v0.1-spec.md` walked through end to end. See
+      "Verification" below for exact commands and results.
+
+### Design decisions made in this milestone
+
+- **`workspace_id` stays a request parameter, but stops being an
+  authority.** The spec's original API (Milestones 1–6) always took
+  `workspace_id` as a caller-supplied query parameter, and a user can
+  legitimately belong to more than one workspace — removing the parameter
+  entirely wasn't the right fix. Instead, every route now resolves it
+  through a membership-checking dependency
+  (`get_workspace_membership`/`get_current_membership`) that answers `404`
+  for both "no such workspace" and "not a member of that workspace" before
+  the route handler ever runs, and the handler always reads the
+  *authorized* workspace id off the resolved `WorkspaceMembership`, never
+  trusting the raw parameter again.
+- **CSRF without a stored token.** Rather than adding a database table or
+  server-side cache for CSRF tokens, the token is
+  `HMAC(secret_key, "csrf:" + session_token)`, recomputed identically on
+  generation and verification. This is a synchronizer token cryptographically
+  bound to the session (stronger than a bare double-submit cookie) with zero
+  additional storage and automatic rotation whenever the session itself
+  rotates (login). The one place this needed care: `build_shell_context`
+  (`threnda/app/web/deps.py`) now generates the token once per request and
+  puts it in the shared shell context, because the sidebar's own logout
+  form needs one on *every* full-page route, not just the ones that
+  already happened to compute one for their own form.
+- **`actor` is no longer client-supplied anywhere.** Every write endpoint
+  that used to accept an `actor` query parameter or JSON field (a
+  Milestone-1-era placeholder, documented at the time as "until
+  authentication exists") now derives it from `membership.user.username`
+  or `session.user.username` instead. This changes several endpoints'
+  request contracts intentionally — most visibly, `POST
+  /api/v1/documents/candidates/{id}/reject` no longer takes a request body
+  at all (its only field was `actor`). Existing tests and docs were updated
+  to the new, authenticated contract rather than kept passing an
+  now-ignored field.
+- **A real PostgreSQL bug this milestone's Docker verification found, in a
+  Milestone 3 migration.** `alembic upgrade head` against a fresh
+  PostgreSQL database (via `docker compose up`) failed with
+  `InvalidForeignKey` inside migration `32832b96f2c3`: it created the
+  `possible_duplicates` table (whose foreign key targets
+  `findings(workspace_id, id)`) *before* adding the
+  `uq_findings_workspace_id_id` constraint those columns need, later in
+  the same migration. SQLite's batch-mode table rebuilding doesn't validate
+  this at `CREATE TABLE` time, so every prior milestone's SQLite-only test
+  suite (172+ tests, run before this milestone) never caught it — this is
+  exactly the kind of bug CLAUDE.md's "PostgreSQL-compatible architecture"
+  requirement exists to catch, and it only surfaced once something in this
+  milestone actually ran a migration against real PostgreSQL. Fixed by
+  reordering the migration's own `upgrade()` (findings' constraints added
+  before `possible_duplicates` is created) and `downgrade()` (mirrored:
+  `possible_duplicates` dropped before the constraints it depends on) —
+  verified with a real `docker compose up` against Postgres, and the
+  existing SQLite upgrade/downgrade/upgrade round trip still passes
+  unchanged.
+- **No superuser / global admin.** Considered and rejected: a superuser
+  role would be a single point of compromise across every workspace and
+  contradicts the workspace-scoped authorization model this milestone
+  otherwise establishes. The operator's remedy for a workspace nobody can
+  administer any more (e.g. every admin account was deleted at the
+  database level, which the application itself never does) is direct
+  database access — the same as any other self-hosted single-tenant tool,
+  and no worse than before this milestone (there was no admin concept to
+  lock anyone out of previously).
+- **Webhook secret is encrypted, not hashed.** Every other secret in this
+  schema (passwords, session tokens) is stored as a one-way hash because
+  the application only ever needs to *verify* a value a client presents
+  again. A webhook signing secret is the opposite: Threnda itself must
+  recover the plaintext to HMAC-sign each outgoing delivery, so it cannot
+  be a one-way hash. Encrypted at rest instead (Fernet, keyed from
+  `THRENDA_SECRET_KEY`) — the one deliberate exception to "never store a
+  recoverable secret" in this codebase, documented as such in
+  `threnda/app/services/crypto.py` and docs/security.md.
+- **Rate limiting is a real, but bounded, control.** The per-IP login
+  limiter is intentionally a simple in-process sliding window, not a
+  Redis-backed distributed limiter — CLAUDE.md rules out Redis without
+  strong justification, and Community's shipped `docker-compose.yml` runs
+  one Uvicorn worker. This is documented as a real limitation (does not
+  survive a restart, not shared across multiple worker processes) rather
+  than silently assumed to be enterprise-grade; the durable, per-account
+  lockout is the control that actually matters against a sustained attack
+  on one known username.
+
+### Known limitations after Milestone 7
+
+- The per-IP login rate limiter is process-local (see "Design decisions"
+  above) — running more than one Uvicorn worker reduces its effectiveness
+  proportionally. The per-account lockout is unaffected.
+- The webhook feature has a documented, narrow DNS-rebinding race between
+  its pre-delivery SSRF check and the actual connection a moment later
+  (docs/security.md, "Webhooks — SSRF defense"). Closing it fully would
+  need a custom resolver pinning the connection to the exact address that
+  was checked, which this milestone's scope (a rarely-used, admin-only,
+  manually-triggered generic webhook with no automatic delivery) does not
+  justify.
+- No self-registration and no password-reset/forgot-password flow — an
+  account locked out of every workspace it belongs to, or a user who
+  forgot their password, needs another admin (or, for the very first
+  admin, direct database access) to help; there is no email-based recovery
+  anywhere, consistent with Community having no required outbound mail
+  dependency.
+- No multi-factor authentication.
+- The web UI does not yet hide write-action buttons/forms from a `viewer`
+  role in every template (server-side enforcement via `require_analyst` is
+  complete and is what actually matters for security; a viewer who submits
+  a hidden form still gets a `403`, just without the button being
+  pre-emptively hidden everywhere it could appear).
+- Exports are exposure-level only (no findings/assets/audit-log export
+  endpoint) — see docs/exports.md.
+
+### Verification
+
+All commands below were run from a clean checkout against this milestone's
+final code, in this order:
+
+1. `ruff check .` — clean, zero errors across the whole repository
+   (application, tests, migrations).
+2. `ruff format --check .` — clean, 199 files already formatted.
+3. `mypy threnda tests migrations` (strict) — clean, zero errors across 177
+   source files.
+4. `pip check` (with the `dev` and `postgres` extras installed) — no broken
+   requirements.
+5. `pytest` — **636 tests, all passing**, including this milestone's new
+   coverage: password/session/login unit tests
+   (`tests/test_auth_service.py`), web login/logout/lockout/rate-limit/
+   open-redirect tests (`tests/test_web_auth.py`), session-bound CSRF tests
+   (`tests/test_csrf.py`), a role/IDOR permissions matrix across every
+   workspace-scoped route (`tests/test_permissions_matrix.py`), CSV/JSON
+   export schema/formula-injection/streaming/auth tests
+   (`tests/test_exports.py`), webhook SSRF/signature/timeout/redirect/DNS
+   tests against a real local HTTP server with monkeypatched DNS
+   resolution (`tests/test_webhooks_service.py`), and the bootstrap CLI's
+   one-time/fail-closed/weak-password/non-interactive behaviour
+   (`tests/test_cli_bootstrap.py`). Every pre-existing Milestone 1–6 test
+   was updated to the authenticated contract (session-derived
+   `workspace_id` scoping, `actor` no longer client-supplied) rather than
+   weakened or deleted.
+6. A real Alembic `upgrade head` → `downgrade -1` → `upgrade head` round
+   trip against a fresh SQLite database — clean.
+7. A clean-database smoke test against a **real `uvicorn` process** (not
+   `TestClient`): fresh SQLite database, `alembic upgrade head`, `threnda
+   bootstrap-admin`, then a real HTTP walkthrough — login, workspace
+   listing, source creation, a real file upload, exposure listing, the
+   `/login` and `/exposures` web routes (200 and a 302-to-`/login` redirect
+   respectively), a static asset, and the `Content-Security-Policy`/
+   `X-Frame-Options`/`X-Content-Type-Options`/`Referrer-Policy` response
+   headers all present — all correct.
+8. A real `docker compose build && docker compose up -d` from a clean
+   checkout (`docker compose down -v` first, so no volume/image state
+   carried over) with `THRENDA_SECRET_KEY`/`POSTGRES_PASSWORD`/
+   `THRENDA_BOOTSTRAP_ADMIN_USERNAME`/`THRENDA_BOOTSTRAP_ADMIN_PASSWORD`
+   supplied via `.env` — both containers reached `healthy`, the entrypoint
+   ran `alembic upgrade head` and the one-time bootstrap automatically
+   (visible in `docker compose logs app`), and a full Definition-of-Done
+   walkthrough was performed against the running container over real HTTP:
+   login, workspace listing, a CSV import (with an explicit column
+   mapping) and a SARIF import, filtering the queue by severity,
+   acknowledging an exposure/assigning an owner/setting a remediation
+   target date/changing its status, re-uploading the same CSV and
+   observing `unchanged_findings: 5, new_findings: 0`, CSV and JSON
+   export, the administrative audit log correctly recording
+   `export_downloaded` (x2) and the bootstrap's own `member_added` event,
+   the web queue page, a webhook creation attempt against a private
+   address correctly refused (`"Webhook URL must use HTTPS in
+   production."`, since `THRENDA_WEBHOOK_ALLOW_PRIVATE_TARGETS` is
+   deliberately unset), and the members API. Container resource usage
+   while idle: **~88 MB** for the app, **~29 MB** for PostgreSQL — well
+   within CLAUDE.md's 16 GB Apple-Silicon target. `docker compose logs`
+   was checked for any of "password"/"secret"/the test admin password
+   string — none found. Finally `docker compose down -v` — clean shutdown,
+   volumes removed.
+9. This exact sequence (steps 6–8) also caught and fixed a real,
+   independent bug: migration `32832b96f2c3`'s operation ordering was
+   invalid against real PostgreSQL even though every SQLite-based test
+   passed — see "Design decisions" above for the fix. This is the value of
+   actually running the Docker/PostgreSQL path rather than trusting the
+   SQLite-only test suite alone.
+
+### Owner decisions / manual steps still outstanding
+
+- **License.** Still not chosen — CLAUDE.md and README both still say so;
+  no `LICENSE` file was added, per standing instructions.
+- **Production secret provisioning.** `THRENDA_SECRET_KEY`/
+  `POSTGRES_PASSWORD`/the bootstrap admin credentials must be generated
+  and supplied by whoever actually deploys an instance — nothing in this
+  repository invents or ships one, by design.
+- **TLS termination.** Threnda's own container only ever serves plain HTTP
+  on `127.0.0.1:8080`; docs/deployment.md documents putting a reverse
+  proxy in front of it for anything beyond local access, but no reverse
+  proxy is included in this repository (out of scope, and dependent on
+  the owner's actual hostname/certificate situation).
+- **Independent security review.** Nothing here has had a third-party
+  security audit — see docs/security.md, "What this is not". The
+  documented residual webhook DNS-rebinding race and the process-local
+  (not multi-worker-aware) login rate limiter are both known, accepted
+  trade-offs for Community's scope, not oversights, but the owner should
+  make their own judgment call about whether either matters for a
+  specific deployment.
+- **Nothing was pushed, merged, or committed to `main`.** Work happened
+  entirely on `feat/community-v0.1`, committed locally in small
+  conventional commits (see `git log`) — pushing/merging/opening a PR is
+  the owner's call, not done automatically here.

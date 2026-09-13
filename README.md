@@ -9,36 +9,59 @@ puts the result into a single actionable queue that a security team can
 actually work through.
 
 > **Status: early development / pre-alpha.**
-> Milestones 1 (project foundation), 2 (ingestion), 3 (deduplication and
-> exposures), 4 (workflow and risk scoring), 5 (web UI) and 6 (pentest
-> ingestion, optional local AI) are implemented and pending owner review:
-> domain models, SQLite persistence with Alembic migrations,
-> workspace/source provisioning, CSV/JSON/SARIF/structured-pentest-JSON file
-> upload, local (no-cloud, no-OCR) PDF/TXT/Markdown pentest report
-> extraction with a mandatory-human-review candidate-finding queue,
-> optional local Ollama AI assistance (disabled by default, zero network
-> calls when disabled), layered deduplication/correlation with a
-> manual-review queue for uncertain matches, an import differential engine
+> Milestones 1–7 (project foundation, ingestion, deduplication and
+> exposures, workflow and risk scoring, web UI, pentest ingestion/optional
+> local AI, and authentication/hardening/packaging) are implemented and
+> pending owner review: domain models, SQLite/PostgreSQL persistence with
+> Alembic migrations, CSV/JSON/SARIF/structured-pentest-JSON file upload,
+> local (no-cloud, no-OCR) PDF/TXT/Markdown pentest report extraction with a
+> mandatory-human-review candidate-finding queue, optional local Ollama AI
+> assistance (disabled by default, zero network calls when disabled),
+> layered deduplication/correlation with a manual-review queue for
+> uncertain matches, an import differential engine
 > (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED), server-enforced exposure
 > lifecycle transitions, a deterministic explainable risk score (0-100), a
-> local-development REST API, and a server-rendered Jinja2 + HTMX UI
-> (findings queue with risk filtering, exposure detail with a score
-> breakdown, imports, sources, document review, review queue, dashboard)
-> all exist and are tested. There is still no authentication (Milestone 7)
-> — the web UI's workspace selection and CSRF protection are both plain
-> browsing conveniences, not access control. See
+> REST API, and a server-rendered Jinja2 + HTMX UI (findings queue with
+> risk filtering, exposure detail with a score breakdown, imports, sources,
+> document review, review queue, dashboard) — **now with local
+> username/password accounts, Argon2id password hashing, secure sessions,
+> per-workspace roles (admin/analyst/viewer), session-bound CSRF
+> protection, an administrative audit log, CSV/JSON export, a generic
+> SSRF-defended outbound webhook, and Docker Compose packaging.** See
 > [docs/implementation-plan.md](docs/implementation-plan.md) for exact
-> scope and known limitations, [docs/risk-scoring.md](docs/risk-scoring.md)
-> for the scoring engine, [docs/deduplication.md](docs/deduplication.md)
-> for the correlation/differential design, and
+> scope and known limitations, [docs/security.md](docs/security.md) for
+> the full authentication/authorization/session design,
+> [docs/risk-scoring.md](docs/risk-scoring.md) for the scoring engine,
+> [docs/deduplication.md](docs/deduplication.md) for the
+> correlation/differential design, and
 > [docs/pentest-and-ai.md](docs/pentest-and-ai.md) /
 > [docs/local-ai.md](docs/local-ai.md) for the pentest ingestion and
-> optional AI provider. Do not deploy this, and do not treat anything below
-> as a description of finished, production-ready functionality.
+> optional AI provider. Nothing below should be read as a description of
+> independently-audited, production-hardened functionality — see
+> [docs/security.md](docs/security.md), "What this is not".
 
-## Local development
+## Docker quick start
 
-Requires Python 3.12+. There is no Docker packaging yet (Milestone 7).
+Requires Docker and Docker Compose. See [docs/deployment.md](docs/deployment.md)
+for TLS/reverse proxy, backup/restore, and upgrade instructions.
+
+```bash
+git clone <this repository> && cd threnda
+cp .env.example .env
+# Edit .env: set THRENDA_SECRET_KEY, POSTGRES_PASSWORD, and (first run
+# only) THRENDA_BOOTSTRAP_ADMIN_USERNAME/_PASSWORD — see .env.example.
+
+docker compose up -d
+open http://localhost:8080   # log in with the bootstrap admin account
+```
+
+No manual database setup is required — Compose starts PostgreSQL, waits for
+it to be healthy, and the app container applies migrations automatically
+before serving traffic.
+
+## Local Python development
+
+Requires Python 3.12+.
 
 ```bash
 python -m venv .venv
@@ -51,9 +74,12 @@ pip install -e ".[dev]"
 mkdir -p data
 alembic upgrade head
 
+# Create the first admin account (one-time; prompts interactively)
+threnda bootstrap-admin
+
 # Run the app (binds to localhost only)
 uvicorn threnda.app.main:app --host 127.0.0.1 --port 8080
-# -> http://127.0.0.1:8080/ (web UI, redirects to onboarding on a fresh database)
+# -> http://127.0.0.1:8080/login
 # -> http://127.0.0.1:8080/api/v1/health, http://127.0.0.1:8080/docs (JSON API)
 
 # Tests, lint, types, dependency sanity
@@ -66,27 +92,37 @@ pip check
 
 ### Importing a synthetic finding
 
-Through the web UI: open `http://127.0.0.1:8080/`, create a workspace, add a
-source under **Sources**, then **New import** and upload one of the
-synthetic samples in `demo-data/`.
+Through the web UI: open `http://127.0.0.1:8080/`, log in, create a
+workspace (or use the one your admin account already belongs to after
+bootstrap), add a source under **Sources**, then **New import** and upload
+one of the synthetic samples in `demo-data/`.
 
-Through the HTTP API directly — create a workspace and a source, then upload
-one of the synthetic samples in `demo-data/` — see
+Through the HTTP API directly — log in, create a workspace and a source,
+then upload one of the synthetic samples in `demo-data/` — see
 [docs/importers.md](docs/importers.md) for the full CSV/JSON/SARIF/pentest-JSON
-reference and every endpoint's exact contract:
+reference and every endpoint's exact contract. `-c cookies.txt -b cookies.txt`
+carries the session cookie across requests, the same way a browser would:
 
 ```bash
-curl -s -X POST localhost:8080/api/v1/workspaces \
-  -H "Content-Type: application/json" -d '{"name": "demo"}'
-# -> note the returned "id" as WORKSPACE_ID
+curl -s -c cookies.txt -b cookies.txt -X POST localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "<your bootstrap username>", "password": "<your bootstrap password>"}'
 
-curl -s -X POST "localhost:8080/api/v1/sources?workspace_id=$WORKSPACE_ID" \
+curl -s -c cookies.txt -b cookies.txt -X POST localhost:8080/api/v1/workspaces \
+  -H "Content-Type: application/json" -d '{"name": "demo"}'
+# -> note the returned "id" as WORKSPACE_ID (your account is automatically
+#    made this workspace's admin)
+
+curl -s -c cookies.txt -b cookies.txt -X POST "localhost:8080/api/v1/sources?workspace_id=$WORKSPACE_ID" \
   -H "Content-Type: application/json" -d '{"name": "demo-json", "source_type": "json"}'
 # -> note the returned "id" as SOURCE_ID
 
-curl -s -X POST "localhost:8080/api/v1/imports?workspace_id=$WORKSPACE_ID" \
+curl -s -c cookies.txt -b cookies.txt -X POST "localhost:8080/api/v1/imports?workspace_id=$WORKSPACE_ID" \
   -F "source_id=$SOURCE_ID" \
   -F "file=@demo-data/json/synthetic-findings.json;type=application/json"
+
+# Export the resulting queue
+curl -s -c cookies.txt -b cookies.txt "localhost:8080/api/v1/exports/exposures?workspace_id=$WORKSPACE_ID&format=csv"
 ```
 
 ### Reviewing a synthetic pentest PDF/text report
@@ -98,17 +134,17 @@ explicit human accept before it becomes a finding — see
 [docs/pentest-and-ai.md](docs/pentest-and-ai.md):
 
 ```bash
-curl -s -X POST "localhost:8080/api/v1/sources?workspace_id=$WORKSPACE_ID" \
+curl -s -c cookies.txt -b cookies.txt -X POST "localhost:8080/api/v1/sources?workspace_id=$WORKSPACE_ID" \
   -H "Content-Type: application/json" \
   -d '{"name": "demo-pentest", "source_type": "pentest_report"}'
 # -> note the returned "id" as SOURCE_ID
 
-curl -s -X POST "localhost:8080/api/v1/documents?workspace_id=$WORKSPACE_ID" \
+curl -s -c cookies.txt -b cookies.txt -X POST "localhost:8080/api/v1/documents?workspace_id=$WORKSPACE_ID" \
   -F "source_id=$SOURCE_ID" \
   -F "file=@demo-data/documents/synthetic-pentest-report.txt;type=text/plain"
 # -> inspect the returned "candidates"; note one "id" as CANDIDATE_ID
 
-curl -s -X POST "localhost:8080/api/v1/documents/candidates/$CANDIDATE_ID/accept?workspace_id=$WORKSPACE_ID" \
+curl -s -c cookies.txt -b cookies.txt -X POST "localhost:8080/api/v1/documents/candidates/$CANDIDATE_ID/accept?workspace_id=$WORKSPACE_ID" \
   -H "Content-Type: application/json" -d '{"severity": "high"}'
 ```
 
@@ -157,6 +193,21 @@ documented Community/Enterprise boundary.
 extensions (live vendor integrations, SSO/SAML/SCIM, advanced RBAC, HA,
 BYOC and air-gapped deployment, enterprise AI orchestration, premium support
 tooling). None of it is implemented yet.
+
+## Documentation
+
+- [docs/architecture.md](docs/architecture.md) — process shape, code layout, request lifecycle
+- [docs/data-model.md](docs/data-model.md) — the full schema
+- [docs/importers.md](docs/importers.md) — CSV/JSON/SARIF/pentest-JSON ingestion contract
+- [docs/deduplication.md](docs/deduplication.md) — correlation and the import differential engine
+- [docs/risk-scoring.md](docs/risk-scoring.md) — the explainable risk-scoring engine
+- [docs/pentest-and-ai.md](docs/pentest-and-ai.md) / [docs/local-ai.md](docs/local-ai.md) — pentest report ingestion and optional local AI
+- [docs/security.md](docs/security.md) — authentication, sessions, CSRF, RBAC, auditing, secrets
+- [docs/exports.md](docs/exports.md) — CSV/JSON export schema
+- [docs/webhooks.md](docs/webhooks.md) — outbound webhook delivery and SSRF defense
+- [docs/deployment.md](docs/deployment.md) — Docker Compose, TLS/reverse proxy, backup/restore, upgrades
+- [docs/roadmap.md](docs/roadmap.md) — what's shipped, what's plausible next, what's Enterprise-only
+- [docs/implementation-plan.md](docs/implementation-plan.md) — milestone-by-milestone delivery record
 
 ## Clean-room notice
 

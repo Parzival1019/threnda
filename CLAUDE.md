@@ -200,7 +200,45 @@ contract, docs/deduplication.md for the correlation/differential design,
 docs/risk-scoring.md for the scoring engine, and docs/pentest-and-ai.md /
 docs/local-ai.md for the pentest ingestion and optional AI provider.
 
-There is still no authentication — Milestone 7 has not started. The web
-UI's workspace selection and CSRF token are both browsing conveniences,
-not access control, until Milestone 7 lands. This is
-local-development-only; do not deploy it.
+Milestone 7 (authentication, hardening, packaging, docs) is implemented and
+pending owner review: local username/password accounts (Argon2id via
+`argon2-cffi`, a baseline password policy, constant-time-shaped login
+against unknown usernames, per-account lockout plus a process-local
+per-IP rate limit), opaque high-entropy sessions stored only as a SHA-256
+hash (`threnda/app/models/user_session.py`) with idle/absolute expiry and
+rotation on login, per-workspace roles (admin/analyst/viewer,
+`threnda/app/models/workspace_membership.py`) that are now the sole
+authority for every workspace-scoped API and web route — a caller-supplied
+`workspace_id` alone no longer grants anything, and a workspace that
+doesn't exist and one the caller isn't a member of both answer `404`
+identically. Session-bound CSRF tokens (`threnda/app/web/csrf.py`) replace
+the earlier double-submit-cookie placeholder, baseline response security
+headers (CSP/HSTS-adjacent headers via
+`threnda/app/core/middleware.py::SecurityHeadersMiddleware`) are attached
+to every response, and an administrative audit log
+(`threnda/app/models/audit_log.py`, single write path
+`threnda/app/services/audit.py`) records account/membership/webhook/export
+events while never logging a password, session token, or webhook secret.
+CSV/JSON export (`threnda/app/services/exports.py`, formula-injection-safe,
+streamed in bounded batches, no artificial row cap) and a generic,
+admin-triggered, SSRF-defended outbound webhook
+(`threnda/app/services/webhooks.py`) are both new. First-admin bootstrap is
+explicit and one-time (`threnda bootstrap-admin`, or
+`THRENDA_BOOTSTRAP_ADMIN_USERNAME`/`_PASSWORD` in the Docker Compose
+entrypoint) and invents no credentials; `threnda/app/core/startup_checks.py`
+fails closed at startup if `THRENDA_ENV=production` with a missing, default,
+or too-short `THRENDA_SECRET_KEY`. A multi-stage, non-root `Dockerfile` and
+a `docker-compose.yml` running PostgreSQL (with a healthcheck, automatic
+`alembic upgrade head`, and named volumes) bring the whole stack up with
+`docker compose up -d` from a clean checkout given only the one-time
+secrets in `.env`. See docs/security.md for the full
+authentication/session/CSRF/authorization/audit design, docs/deployment.md
+for the Docker/bootstrap/TLS/backup/upgrade operational contract,
+docs/webhooks.md and docs/exports.md for those two features, and
+docs/implementation-plan.md for exact scope, verification results, and
+known limitations.
+
+This remains pre-alpha and has not had an independent security review —
+see docs/security.md, "What this is not" — but the web UI and JSON API are
+no longer unauthenticated: every workspace-scoped route requires a real
+session and a real per-workspace role.
