@@ -15,6 +15,9 @@ def test_settings_defaults_match_env_example() -> None:
     assert settings.database_url == "sqlite:///./data/threnda.db"
     assert settings.ai_provider is AIProvider.DISABLED
     assert settings.ai_model == ""
+    assert settings.ai_base_url == "http://127.0.0.1:11434"
+    assert settings.ai_timeout_seconds == 5.0
+    assert settings.ai_max_input_characters == 50_000
     assert settings.is_production is False
     assert settings.is_sqlite is True
 
@@ -51,3 +54,52 @@ def test_invalid_environment_value_is_rejected(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("THRENDA_ENV", "not-a-real-environment")
     with pytest.raises(ValueError, match="validation error"):
         Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1:11434",
+        "http://localhost:11434",
+        "http://[::1]:11434",
+        "https://127.0.0.1:11434/",
+    ],
+)
+def test_ai_base_url_accepts_localhost_forms(url: str) -> None:
+    settings = Settings(_env_file=None, ai_base_url=url)  # type: ignore[call-arg]
+    assert not settings.ai_base_url.endswith("/")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.test:11434",
+        "http://169.254.169.254",
+        "http://localhost.evil.test",
+        "http://127.0.0.1.evil.test",
+        "ftp://127.0.0.1:11434",
+        "http://user:pass@127.0.0.1:11434",
+        "http://127.0.0.1:11434?x=1",
+        "http://127.0.0.1:11434#frag",
+        "not-a-url",
+    ],
+)
+def test_ai_base_url_rejects_non_localhost_or_credentialed_forms(url: str) -> None:
+    with pytest.raises(ValueError, match="ai_base_url"):
+        Settings(_env_file=None, ai_base_url=url)  # type: ignore[call-arg]
+
+
+def test_ai_timeout_seconds_bounds_are_enforced() -> None:
+    Settings(_env_file=None, ai_timeout_seconds=30)  # type: ignore[call-arg]
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, ai_timeout_seconds=0)  # type: ignore[call-arg]
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, ai_timeout_seconds=31)  # type: ignore[call-arg]
+
+
+def test_ai_max_input_characters_bounds_are_enforced() -> None:
+    Settings(_env_file=None, ai_max_input_characters=1000)  # type: ignore[call-arg]
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, ai_max_input_characters=999)  # type: ignore[call-arg]
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, ai_max_input_characters=200_001)  # type: ignore[call-arg]

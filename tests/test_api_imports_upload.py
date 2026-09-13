@@ -97,6 +97,96 @@ def test_upload_json_happy_path(client: TestClient, db_session: Session) -> None
     assert body["import_run"]["failed_records"] == 0
 
 
+def test_upload_pentest_json_happy_path_fans_out_across_assets(
+    client: TestClient, db_session: Session
+) -> None:
+    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.PENTEST_REPORT)
+    content = (DEMO_DATA / "pentest" / "synthetic-pentest-report.json").read_bytes()
+
+    response = client.post(
+        "/api/v1/imports",
+        params={"workspace_id": workspace_id},
+        data={"source_id": str(source_id)},
+        files={"file": ("synthetic-pentest-report.json", content, "application/json")},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["import_run"]["failed_records"] == 0
+    # PENTEST-001 fans out across 2 assets, PENTEST-002 and PENTEST-003 have
+    # one/zero assets — 4 total NormalizedFinding rows from 3 JSON records.
+    assert body["import_run"]["successful_records"] == 4
+
+    findings = db_session.scalars(select(Finding).where(Finding.workspace_id == workspace_id)).all()
+    assert len(findings) == 4
+    assert {f.source_finding_id for f in findings} == {
+        "PENTEST-001::host:synthetic-app01.example.test",
+        "PENTEST-001::host:synthetic-app02.example.test",
+        "PENTEST-002::url:https://synthetic-app01.example.test/search",
+        "PENTEST-003",
+    }
+
+
+def test_upload_pentest_json_reimport_is_unchanged_not_duplicated(
+    client: TestClient, db_session: Session
+) -> None:
+    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.PENTEST_REPORT)
+    content = (DEMO_DATA / "pentest" / "synthetic-pentest-report.json").read_bytes()
+
+    client.post(
+        "/api/v1/imports",
+        params={"workspace_id": workspace_id},
+        data={"source_id": str(source_id)},
+        files={"file": ("report.json", content, "application/json")},
+    )
+    second = client.post(
+        "/api/v1/imports",
+        params={"workspace_id": workspace_id},
+        data={"source_id": str(source_id)},
+        files={"file": ("report.json", content, "application/json")},
+    )
+
+    assert second.status_code == 201, second.text
+    body = second.json()["import_run"]
+    assert body["new_findings"] == 0
+    assert body["unchanged_findings"] == 4
+
+    findings = db_session.scalars(select(Finding).where(Finding.workspace_id == workspace_id)).all()
+    assert len(findings) == 4
+
+
+def test_upload_pentest_json_per_record_error_does_not_discard_the_rest(
+    client: TestClient, db_session: Session
+) -> None:
+    workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.PENTEST_REPORT)
+    content = json.dumps(
+        {
+            "report": {},
+            "findings": [
+                {"id": "good", "title": "Valid pentest finding", "severity": "high"},
+                {"id": "bad", "title": ""},
+            ],
+        }
+    ).encode()
+
+    response = client.post(
+        "/api/v1/imports",
+        params={"workspace_id": workspace_id},
+        data={"source_id": str(source_id)},
+        files={"file": ("report.json", content, "application/json")},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["import_run"]["successful_records"] == 1
+    assert body["import_run"]["failed_records"] == 1
+    assert len(body["row_errors"]) == 1
+
+    findings = db_session.scalars(select(Finding).where(Finding.workspace_id == workspace_id)).all()
+    assert len(findings) == 1
+    assert findings[0].title == "Valid pentest finding"
+
+
 def test_upload_sarif_happy_path(client: TestClient, db_session: Session) -> None:
     workspace_id, source_id = _make_workspace_and_source(db_session, SourceType.SARIF)
     content = (DEMO_DATA / "sarif" / "synthetic-scan.sarif.json").read_bytes()
