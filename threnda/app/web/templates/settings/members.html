@@ -18,7 +18,7 @@
         <span class="k">{{ member.user.username }}</span>
         <form method="post" action="/settings/members/{{ member.user_id }}/role?workspace_id={{ workspace.id }}" style="margin:0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <select name="role" onchange="this.form.submit()">
+          <select name="role" class="compact-select" data-auto-submit>
             {% for r in roles %}
             <option value="{{ r.value }}" {% if r == member.role %}selected{% endif %}>{{ r.value }}</option>
             {% endfor %}

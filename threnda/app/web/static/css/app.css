@@ -312,6 +312,8 @@ textarea {
   color: var(--text-muted);
 }
 .field input[type="text"],
+.field input[type="password"],
+.field input[type="url"],
 .field input[type="date"],
 .field input[type="file"],
 .field select,
@@ -343,6 +345,21 @@ textarea {
 .field-row > .field {
   flex: 1;
   min-width: 220px;
+}
+
+.compact-select {
+  appearance: none;
+  min-width: 88px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  padding: 7px 9px;
+  font: 400 12px var(--font-mono);
+  color: var(--text-primary);
+  outline: none;
+}
+.compact-select:focus {
+  border-color: var(--accent);
 }
 
 .error-banner {

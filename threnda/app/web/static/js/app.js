@@ -54,6 +54,10 @@
   });
 
   document.addEventListener("change", function (event) {
+    if (event.target.matches && event.target.matches("[data-auto-submit]")) {
+      var autoSubmitForm = event.target.closest("form");
+      if (autoSubmitForm) autoSubmitForm.requestSubmit();
+    }
     if (event.target.matches && event.target.matches("input[name='ids']")) {
       var bar = document.getElementById("bulk-bar");
       if (bar) refreshBulkBar(bar);
