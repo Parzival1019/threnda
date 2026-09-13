@@ -1,8 +1,9 @@
 """Workspace onboarding and switching.
 
-No authentication exists yet (Milestone 7): a "workspace" here is just the
-first one to exist, or whichever the visitor picked — see
-``threnda.app.web.deps.get_current_workspace``.
+Any authenticated user may create a new workspace — doing so makes them
+its first admin member (see ``threnda.app.services.memberships``).
+Switching between workspaces a user already belongs to is handled by
+``threnda.app.web.deps.get_current_membership``.
 """
 
 from __future__ import annotations
@@ -13,15 +14,21 @@ from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
 
 from threnda.app.api.deps import get_db
+from threnda.app.models.enums import WorkspaceRole
+from threnda.app.models.user import User
 from threnda.app.models.workspace import Workspace
+from threnda.app.services.memberships import add_member
+from threnda.app.web.cookies import WORKSPACE_COOKIE_NAME, cookie_secure
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
-from threnda.app.web.deps import WORKSPACE_COOKIE_NAME, templates
+from threnda.app.web.deps import get_current_user, templates
 
 router = APIRouter(prefix="/workspaces", tags=["web-workspaces"])
 
 
 @router.get("/new")
-def new_workspace_form(request: Request, error: str | None = None) -> Response:
+def new_workspace_form(
+    request: Request, error: str | None = None, _user: User = Depends(get_current_user)
+) -> Response:
     token = get_csrf_token(request)
     response = templates.TemplateResponse(
         request, "workspaces/new.html", {"error": error, "csrf_token": token}
@@ -35,6 +42,7 @@ def create_workspace(
     request: Request,
     name: str = Form(...),
     csrf_token: str = Form(...),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
@@ -59,6 +67,14 @@ def create_workspace(
         apply_csrf_cookie(request, response, token)
         return response
 
+    add_member(db, workspace, user, WorkspaceRole.ADMIN, actor=user)
+
     redirect = RedirectResponse(url="/", status_code=303)
-    redirect.set_cookie(WORKSPACE_COOKIE_NAME, str(workspace.id), samesite="lax")
+    redirect.set_cookie(
+        WORKSPACE_COOKIE_NAME,
+        str(workspace.id),
+        httponly=True,
+        samesite="strict",
+        secure=cookie_secure(request.app.state.settings, request),
+    )
     return redirect

@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% block title %}Members{% endblock %}
+{% block page_title %}Members{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Workspace members</h2>
+  <p>Admins manage membership and roles. Analysts operate findings, imports,
+     documents and exports. Viewers are read-only.</p>
+</div>
+
+{% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+
+<div style="max-width:900px;display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">
+  <div style="flex:2;min-width:320px">
+    <div class="card">
+      {% for member in members %}
+      <div class="card-row">
+        <span class="k">{{ member.user.username }}</span>
+        <form method="post" action="/settings/members/{{ member.user_id }}/role?workspace_id={{ workspace.id }}" style="margin:0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <select name="role" onchange="this.form.submit()">
+            {% for r in roles %}
+            <option value="{{ r.value }}" {% if r == member.role %}selected{% endif %}>{{ r.value }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        <form method="post" action="/settings/members/{{ member.user_id }}/remove?workspace_id={{ workspace.id }}" style="margin-left:8px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-danger">Remove</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:280px">
+    <form method="post" action="/settings/members?workspace_id={{ workspace.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="member-username">Username</label>
+        <input id="member-username" type="text" name="username" required maxlength="64" placeholder="e.g. jdoe">
+      </div>
+      <div class="field">
+        <label for="member-password">Password (only for a brand-new account)</label>
+        <input id="member-password" type="password" name="password" maxlength="256" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="member-role">Role</label>
+        <select id="member-role" name="role">
+          {% for r in roles %}
+          <option value="{{ r.value }}">{{ r.value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">Add member</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

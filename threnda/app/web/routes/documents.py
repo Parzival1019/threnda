@@ -13,6 +13,7 @@ from threnda.app.models.document import Document
 from threnda.app.models.enums import SeverityLevel, SourceType
 from threnda.app.models.source import Source
 from threnda.app.models.workspace import Workspace
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.documents.processing import UnsupportedDocumentError, process_document
 from threnda.app.services.documents.review import (
     CandidateAlreadyResolvedError,
@@ -21,7 +22,12 @@ from threnda.app.services.documents.review import (
     reject_candidate,
 )
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
-from threnda.app.web.deps import build_shell_context, get_current_workspace, templates
+from threnda.app.web.deps import (
+    build_shell_context,
+    get_current_membership,
+    require_analyst,
+    templates,
+)
 
 router = APIRouter(prefix="/documents", tags=["web-documents"])
 
@@ -30,6 +36,7 @@ def _page(
     request: Request,
     db: Session,
     workspace: Workspace,
+    membership: WorkspaceMembership,
     *,
     notice: str | None = None,
     error: str | None = None,
@@ -68,7 +75,7 @@ def _page(
             "csrf_token": token,
             "notice": notice,
             "error": error,
-            **build_shell_context(db, workspace),
+            **build_shell_context(request, db, workspace, membership),
         },
     )
     apply_csrf_cookie(request, response, token)
@@ -78,18 +85,19 @@ def _page(
 @router.get("")
 def list_documents(
     request: Request,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
-    return _page(request, db, workspace)
+    return _page(request, db, membership.workspace, membership)
 
 
 @router.post("")
 async def upload_document(
     request: Request,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     form = await request.form()
     verify_csrf(request, str(form.get("csrf_token") or ""))
     upload = form.get("file")
@@ -115,11 +123,12 @@ async def upload_document(
             use_ai=form.get("use_ai") == "on",
         )
     except (UnsupportedDocumentError, ValueError) as exc:
-        return _page(request, db, workspace, error=str(exc))
+        return _page(request, db, workspace, membership, error=str(exc))
     return _page(
         request,
         db,
         workspace,
+        membership,
         notice=(
             f"{document.filename}: {len(document.candidates)} review candidate(s) ready."
             if document.status.value == "processed"
@@ -136,16 +145,17 @@ def accept(
     csrf_token: str = Form(...),
     title: str = Form(...),
     severity: SeverityLevel = Form(...),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
+    workspace = membership.workspace
     try:
         accept_candidate(
             db,
             workspace_id=workspace.id,
             candidate_id=candidate_id,
-            actor="web",
+            actor=membership.user.username,
             title=title,
             severity=severity,
         )
@@ -163,12 +173,15 @@ def reject(
     request: Request,
     candidate_id: int,
     csrf_token: str = Form(...),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
+    workspace = membership.workspace
     try:
-        reject_candidate(db, workspace_id=workspace.id, candidate_id=candidate_id, actor="web")
+        reject_candidate(
+            db, workspace_id=workspace.id, candidate_id=candidate_id, actor=membership.user.username
+        )
     except CandidateNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Candidate not found") from exc
     except CandidateAlreadyResolvedError as exc:

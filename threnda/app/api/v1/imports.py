@@ -12,9 +12,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from threnda.app.api.deps import get_db
+from threnda.app.api.deps import get_db, require_analyst, require_viewer
 from threnda.app.models.import_run import ImportRun
 from threnda.app.models.source import Source
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.schemas.common import Page
 from threnda.app.schemas.import_run import ImportRowErrorRead, ImportRunRead, ImportUploadResult
 from threnda.app.services.ingestion.upload import (
@@ -32,13 +33,13 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 
 @router.get("", response_model=Page[ImportRunRead])
 def list_imports(
-    workspace_id: int = Query(..., description="Workspace to scope results to."),
     source_id: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    membership: WorkspaceMembership = Depends(require_viewer),
     db: Session = Depends(get_db),
 ) -> Page[ImportRunRead]:
-    stmt = select(ImportRun).where(ImportRun.workspace_id == workspace_id)
+    stmt = select(ImportRun).where(ImportRun.workspace_id == membership.workspace_id)
     if source_id is not None:
         stmt = stmt.where(ImportRun.source_id == source_id)
 
@@ -58,7 +59,6 @@ def list_imports(
 
 @router.post("", response_model=ImportUploadResult, status_code=201)
 async def create_import(
-    workspace_id: int = Query(..., description="Workspace this import belongs to."),
     source_id: int = Form(..., description="Source (within that workspace) this upload is for."),
     file: UploadFile = File(
         ..., description="The CSV, JSON, SARIF, or structured pentest JSON file to import."
@@ -73,10 +73,11 @@ async def create_import(
             "and when given, this value replaces the saved mapping."
         ),
     ),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> ImportUploadResult | JSONResponse:
     source = db.get(Source, source_id)
-    if source is None or source.workspace_id != workspace_id:
+    if source is None or source.workspace_id != membership.workspace_id:
         raise HTTPException(status_code=404, detail="Source not found in this workspace")
 
     try:
@@ -89,7 +90,7 @@ async def create_import(
     try:
         outcome = handle_upload(
             db,
-            workspace_id=workspace_id,
+            workspace_id=membership.workspace_id,
             source=source,
             filename=file.filename,
             content_type=file.content_type,

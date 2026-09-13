@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% block title %}Webhooks{% endblock %}
+{% block page_title %}Webhooks{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Outbound webhooks</h2>
+  <p>Disabled by default. Delivery is manual — click "Send test delivery" to
+     fire one signed request now; nothing is sent automatically. See
+     <span class="mono">docs/webhooks.md</span>.</p>
+</div>
+
+{% if notice %}<div class="notice-banner">{{ notice }}</div>{% endif %}
+{% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+
+<div style="max-width:900px;display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">
+  <div style="flex:2;min-width:320px">
+    {% if endpoints %}
+    <div class="card">
+      {% for endpoint in endpoints %}
+      <div class="card-row" style="flex-wrap:wrap">
+        <span class="k mono">{{ endpoint.url }}</span>
+        <span class="v">{{ "enabled" if endpoint.enabled else "disabled" }}</span>
+        <span class="v cell-muted">
+          {% if endpoint.last_triggered_at %}last: {{ endpoint.last_triggered_at | humanize_dt }}
+            ({{ endpoint.last_status_code or endpoint.last_error or "?" }}){% else %}never triggered{% endif %}
+        </span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <form method="post" action="/settings/webhooks/{{ endpoint.id }}/toggle?workspace_id={{ workspace.id }}" style="margin:0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-secondary">{{ "Disable" if endpoint.enabled else "Enable" }}</button>
+          </form>
+          <form method="post" action="/settings/webhooks/{{ endpoint.id }}/trigger?workspace_id={{ workspace.id }}" style="margin:0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-secondary" {{ "disabled" if not endpoint.enabled }}>Send test delivery</button>
+          </form>
+          <form method="post" action="/settings/webhooks/{{ endpoint.id }}/delete?workspace_id={{ workspace.id }}" style="margin:0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-danger">Delete</button>
+          </form>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <h3>No webhooks configured</h3>
+      <p>Add an HTTPS endpoint to receive a signed test delivery on demand.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="flex:1;min-width:280px">
+    <form method="post" action="/settings/webhooks?workspace_id={{ workspace.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="webhook-url">URL</label>
+        <input id="webhook-url" type="url" name="url" required maxlength="2048" placeholder="https://example.org/hooks/threnda">
+      </div>
+      <div class="field">
+        <label for="webhook-description">Description (optional)</label>
+        <input id="webhook-description" type="text" name="description" maxlength="200">
+      </div>
+      <button type="submit" class="btn btn-primary">Add webhook</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

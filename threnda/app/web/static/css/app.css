@@ -258,6 +258,24 @@ textarea {
 .btn-ghost:hover {
   color: var(--text-primary);
 }
+.btn-danger {
+  background: transparent;
+  color: var(--critical);
+  border: 1px solid var(--critical);
+}
+.btn-danger:hover {
+  background: var(--critical);
+  color: var(--accent-fg);
+}
+.btn-link {
+  appearance: none;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  padding: 0;
+}
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -335,6 +353,16 @@ textarea {
   padding: 10px 13px;
   font-size: 12.5px;
   margin-bottom: 14px;
+}
+.notice-banner {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 10px 13px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+  word-break: break-all;
 }
 
 /* --------------------------------------------------------------- table */

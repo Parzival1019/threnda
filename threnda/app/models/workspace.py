@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from threnda.app.models.import_run import ImportRun
     from threnda.app.models.possible_duplicate import PossibleDuplicate
     from threnda.app.models.source import Source
+    from threnda.app.models.webhook_endpoint import WebhookEndpoint
+    from threnda.app.models.workspace_membership import WorkspaceMembership
 
 
 class Workspace(Base):
@@ -57,6 +59,12 @@ class Workspace(Base):
         back_populates="workspace", cascade="all, delete-orphan"
     )
     candidate_findings: Mapped[list[CandidateFinding]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+    memberships: Mapped[list[WorkspaceMembership]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+    webhook_endpoints: Mapped[list[WebhookEndpoint]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan"
     )
 

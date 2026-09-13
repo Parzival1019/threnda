@@ -1,0 +1,79 @@
+# Threnda Community — Docker Compose deployment.
+#
+# Quick start (see README.md / docs/deployment.md for the full walkthrough):
+#
+#     cp .env.example .env
+#     # edit .env: set THRENDA_SECRET_KEY, POSTGRES_PASSWORD, and (for the
+#     # very first run only) THRENDA_BOOTSTRAP_ADMIN_USERNAME/_PASSWORD
+#     docker compose up -d
+#     open http://localhost:8080
+#
+# `docker compose up` refuses to start (a clear error naming the missing
+# variable, not a silently-broken container) if THRENDA_SECRET_KEY or
+# POSTGRES_PASSWORD is unset — see the `:?` interpolation below. Nothing
+# here has a baked-in default credential.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: threnda
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before running.}
+      POSTGRES_DB: threnda
+    volumes:
+      - threnda-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U threnda -d threnda"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # Not exposed on the host — only the app container talks to it.
+    networks:
+      - threnda-internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      THRENDA_ENV: production
+      THRENDA_SECRET_KEY: ${THRENDA_SECRET_KEY:?Set THRENDA_SECRET_KEY in .env before running (see .env.example).}
+      THRENDA_DATABASE_URL: postgresql+psycopg://threnda:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before running.}@db:5432/threnda
+      THRENDA_MAX_UPLOAD_BYTES: ${THRENDA_MAX_UPLOAD_BYTES:-20971520}
+      THRENDA_AI_PROVIDER: ${THRENDA_AI_PROVIDER:-disabled}
+      THRENDA_AI_MODEL: ${THRENDA_AI_MODEL:-}
+      THRENDA_AI_BASE_URL: ${THRENDA_AI_BASE_URL:-http://127.0.0.1:11434}
+      # One-time first-admin bootstrap (docs/deployment.md). Leave both
+      # blank after the first successful run — bootstrap-admin refuses to
+      # run a second time regardless, but there's no reason to keep a
+      # password sitting in your .env once the account exists.
+      THRENDA_BOOTSTRAP_ADMIN_USERNAME: ${THRENDA_BOOTSTRAP_ADMIN_USERNAME:-}
+      THRENDA_BOOTSTRAP_ADMIN_PASSWORD: ${THRENDA_BOOTSTRAP_ADMIN_PASSWORD:-}
+    volumes:
+      - threnda-app-data:/app/data
+    ports:
+      # Bound to loopback only — see CLAUDE.md's target development
+      # machine and docs/deployment.md's reverse-proxy/TLS guidance for
+      # exposing this beyond localhost.
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - threnda-internal
+
+volumes:
+  threnda-db-data:
+  threnda-app-data:
+
+networks:
+  threnda-internal:

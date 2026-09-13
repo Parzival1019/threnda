@@ -5,9 +5,10 @@ engine, its own sessionmaker, both stored on ``app.state`` rather than a
 module global. This is what lets tests construct isolated instances against
 temporary databases without any monkeypatching.
 
-Local-only, pre-alpha: there is no authentication yet (see
-docs/implementation-plan.md, Milestone 1 limitations) and this module must
-never be bound to anything other than 127.0.0.1 during development.
+Pre-alpha: local accounts and workspace-scoped authorization exist (see
+docs/security.md), but this has not had an independent security audit —
+bind this only to 127.0.0.1 during local development, and see
+docs/deployment.md before exposing an instance any further.
 """
 
 from __future__ import annotations
@@ -22,7 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from threnda.app import __version__
 from threnda.app.api.v1.router import api_router
 from threnda.app.core.config import Settings, get_settings
-from threnda.app.core.middleware import MaxBodySizeMiddleware
+from threnda.app.core.middleware import MaxBodySizeMiddleware, SecurityHeadersMiddleware
+from threnda.app.core.startup_checks import validate_production_readiness
 from threnda.app.db.session import create_engine_from_settings, create_sessionmaker
 from threnda.app.web.errors import register_web_exception_handlers
 from threnda.app.web.router import web_router
@@ -31,9 +33,10 @@ STATIC_DIR = Path(__file__).parent / "web" / "static"
 
 DESCRIPTION = (
     "Every finding. One queue.\n\n"
-    "**Pre-alpha, local-development API.** There is no authentication yet — "
-    "do not expose this beyond `127.0.0.1` and do not use it to store real "
-    "findings."
+    "**Pre-alpha.** Local accounts and per-workspace roles are enforced "
+    "(see docs/security.md), but this has not had an independent security "
+    "audit — see docs/deployment.md before exposing an instance beyond "
+    "local development."
 )
 
 
@@ -45,6 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     touching the developer's real database.
     """
     resolved_settings = settings or get_settings()
+    validate_production_readiness(resolved_settings)
     engine = create_engine_from_settings(resolved_settings)
 
     @asynccontextmanager
@@ -63,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessionmaker = create_sessionmaker(engine)
 
     app.add_middleware(MaxBodySizeMiddleware, max_bytes=resolved_settings.max_upload_bytes)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(api_router)
     app.include_router(web_router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

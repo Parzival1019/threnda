@@ -14,9 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from threnda.app.api.deps import get_db
+from threnda.app.api.deps import get_db, require_analyst, require_viewer
 from threnda.app.models.enums import ExposureStatus, SeverityLevel
 from threnda.app.models.exposure import Exposure
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.schemas.common import Page
 from threnda.app.schemas.exposure import (
     ExposureDetailRead,
@@ -38,10 +39,10 @@ def _get_exposure_or_404(db: Session, workspace_id: int, exposure_id: int) -> Ex
     """Fetch an exposure scoped to a workspace.
 
     Returns 404 (not 403) when the exposure exists but belongs to a
-    different workspace — until Milestone 7's authentication lands, callers
-    supply ``workspace_id`` themselves, so this boundary is not yet an
-    access control mechanism, but it does prevent cross-workspace ID
-    enumeration from leaking whether a given ID exists elsewhere.
+    different workspace — this cannot happen for an authenticated caller
+    reached through ``require_viewer``/``require_analyst`` (which already
+    proves workspace membership), but it protects against a stale/reused
+    exposure id from a workspace the caller has since lost access to.
     """
     exposure = db.get(Exposure, exposure_id)
     if exposure is None or exposure.workspace_id != workspace_id:
@@ -51,7 +52,6 @@ def _get_exposure_or_404(db: Session, workspace_id: int, exposure_id: int) -> Ex
 
 @router.get("", response_model=Page[ExposureRead])
 def list_exposures(
-    workspace_id: int = Query(..., description="Workspace to scope results to."),
     status: ExposureStatus | None = None,
     severity: SeverityLevel | None = None,
     owner: str | None = None,
@@ -60,9 +60,10 @@ def list_exposures(
     max_risk_score: int | None = Query(default=None, ge=0, le=100),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    membership: WorkspaceMembership = Depends(require_viewer),
     db: Session = Depends(get_db),
 ) -> Page[ExposureRead]:
-    stmt = select(Exposure).where(Exposure.workspace_id == workspace_id)
+    stmt = select(Exposure).where(Exposure.workspace_id == membership.workspace_id)
     if status is not None:
         stmt = stmt.where(Exposure.status == status)
     if severity is not None:
@@ -90,7 +91,7 @@ def list_exposures(
 @router.get("/{exposure_id}", response_model=ExposureDetailRead)
 def get_exposure(
     exposure_id: int,
-    workspace_id: int = Query(..., description="Workspace to scope results to."),
+    membership: WorkspaceMembership = Depends(require_viewer),
     db: Session = Depends(get_db),
 ) -> ExposureDetailRead:
     """Fetch one exposure, including a live risk-score breakdown.
@@ -101,7 +102,7 @@ def get_exposure(
     is the one place staleness (an age-bucket boundary crossed with no
     other mutation since) can never show through.
     """
-    exposure = _get_exposure_or_404(db, workspace_id, exposure_id)
+    exposure = _get_exposure_or_404(db, membership.workspace_id, exposure_id)
     result = compute_risk_score(exposure)
     base = ExposureRead.model_validate(exposure).model_dump()
     base["risk_score"] = result.total
@@ -118,17 +119,15 @@ def get_exposure(
 def update_exposure(
     exposure_id: int,
     payload: ExposureUpdate,
-    workspace_id: int = Query(..., description="Workspace to scope results to."),
-    actor: str = Query(
-        default="system",
-        description="Placeholder actor identity until authentication exists (Milestone 7).",
-    ),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> ExposureRead:
-    exposure = _get_exposure_or_404(db, workspace_id, exposure_id)
+    exposure = _get_exposure_or_404(db, membership.workspace_id, exposure_id)
     changes = cast(ExposureChanges, payload.model_dump(exclude_unset=True, exclude={"note"}))
     try:
-        apply_exposure_update(db, exposure, changes, note=payload.note, actor=actor)
+        apply_exposure_update(
+            db, exposure, changes, note=payload.note, actor=membership.user.username
+        )
     except InvalidStatusTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ExposureRead.model_validate(exposure)

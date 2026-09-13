@@ -18,10 +18,10 @@ from starlette.responses import Response
 from threnda.app.api.deps import get_db
 from threnda.app.models.asset import Asset
 from threnda.app.models.enums import AssetCriticality
-from threnda.app.models.workspace import Workspace
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.assets import apply_asset_update
 from threnda.app.web.csrf import verify_csrf
-from threnda.app.web.deps import get_current_workspace
+from threnda.app.web.deps import require_analyst
 from threnda.app.web.routes.exposures import DetailTab, _get_exposure_or_404, _render_detail_panel
 
 router = APIRouter(prefix="/assets", tags=["web-assets"])
@@ -37,10 +37,11 @@ def update_asset(
     internet_facing: str | None = Form(default=None),
     business_criticality: str | None = Form(default=None),
     tab: str = Form(default="risk"),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
+    workspace = membership.workspace
     asset = db.get(Asset, asset_id)
     if asset is None or asset.workspace_id != workspace.id:
         raise HTTPException(status_code=404, detail="Asset not found")

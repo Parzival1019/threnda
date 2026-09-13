@@ -33,6 +33,7 @@ from threnda.app.models.exposure import Exposure
 from threnda.app.models.finding import Finding
 from threnda.app.models.possible_duplicate import PossibleDuplicate
 from threnda.app.models.workspace import Workspace
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.exposures import (
     ExposureChanges,
     InvalidStatusTransitionError,
@@ -41,14 +42,14 @@ from threnda.app.services.exposures import (
 )
 from threnda.app.services.risk_scoring import compute_risk_score
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
-from threnda.app.web.deps import build_shell_context, get_current_workspace, templates
+from threnda.app.web.deps import (
+    build_shell_context,
+    get_current_membership,
+    require_analyst,
+    templates,
+)
 
 router = APIRouter(prefix="/exposures", tags=["web-exposures"])
-
-# Web-UI-only placeholder identity, distinct from the API's own "system"
-# default — same Milestone-7-pending caveat as every `actor` field in this
-# codebase: there is no authentication yet, so this cannot name a real user.
-ACTOR = "web"
 
 PAGE_SIZE = 50
 DetailTab = Literal["evidence", "identity", "timeline", "remediation", "risk"]
@@ -133,9 +134,10 @@ def queue(
     max_risk: int | None = None,
     sort: str = "risk",
     offset: int = 0,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     filtered = _filtered_query(
         workspace_id=workspace.id,
         status=status,
@@ -183,7 +185,7 @@ def queue(
         "statuses": list(ExposureStatus),
         "severities": list(SeverityLevel),
         "csrf_token": token,
-        **build_shell_context(db, workspace),
+        **build_shell_context(request, db, workspace, membership),
     }
 
     template = "exposures/_queue_inner.html" if _is_htmx(request) else "exposures/queue.html"
@@ -193,7 +195,9 @@ def queue(
 
 
 @router.get("/panel/close")
-def close_panel(workspace: Workspace = Depends(get_current_workspace)) -> HTMLResponse:
+def close_panel(
+    _membership: WorkspaceMembership = Depends(get_current_membership),
+) -> HTMLResponse:
     return HTMLResponse('<div class="panel-placeholder">Select a finding to see its detail.</div>')
 
 
@@ -279,9 +283,10 @@ def detail_panel(
     request: Request,
     exposure_id: int,
     tab: DetailTab = "evidence",
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
     return _render_detail_panel(request, db, workspace, exposure, tab=tab)
 
@@ -293,7 +298,7 @@ def bulk_update(
     action: str = Form(...),
     return_qs: str = Form(default=""),
     ids: list[int] = Form(default=[]),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     # Registered before POST /{exposure_id} — Starlette matches path routes
@@ -301,6 +306,7 @@ def bulk_update(
     # segment at this stage) would otherwise greedily match "bulk" too,
     # only failing (422) once FastAPI tries to coerce "bulk" into an int.
     verify_csrf(request, csrf_token)
+    workspace = membership.workspace
 
     changes: ExposureChanges
     if action == "acknowledge":
@@ -317,7 +323,7 @@ def bulk_update(
         if exposure is None or exposure.workspace_id != workspace.id:
             continue
         try:
-            apply_exposure_update(db, exposure, changes, note=None, actor=ACTOR)
+            apply_exposure_update(db, exposure, changes, note=None, actor=membership.user.username)
         except InvalidStatusTransitionError:
             # A bulk action names one target status for every selected
             # exposure; one of them not being able to make that specific
@@ -344,10 +350,11 @@ def update_exposure(
     remediation: str | None = Form(default=None),
     note: str | None = Form(default=None),
     tab: DetailTab = Form(default="remediation"),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
+    workspace = membership.workspace
     exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
 
     changes: ExposureChanges = {}
@@ -369,7 +376,11 @@ def update_exposure(
 
     try:
         apply_exposure_update(
-            db, exposure, changes, note=(note.strip() if note else None), actor=ACTOR
+            db,
+            exposure,
+            changes,
+            note=(note.strip() if note else None),
+            actor=membership.user.username,
         )
     except InvalidStatusTransitionError as exc:
         return _render_detail_panel(request, db, workspace, exposure, tab=tab, error=str(exc))

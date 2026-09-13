@@ -10,9 +10,14 @@ from starlette.responses import RedirectResponse, Response
 from threnda.app.api.deps import get_db
 from threnda.app.models.enums import SourceType
 from threnda.app.models.source import Source
-from threnda.app.models.workspace import Workspace
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
-from threnda.app.web.deps import build_shell_context, get_current_workspace, templates
+from threnda.app.web.deps import (
+    build_shell_context,
+    get_current_membership,
+    require_analyst,
+    templates,
+)
 
 router = APIRouter(prefix="/sources", tags=["web-sources"])
 
@@ -21,9 +26,10 @@ router = APIRouter(prefix="/sources", tags=["web-sources"])
 def list_sources(
     request: Request,
     error: str | None = None,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     sources = (
         db.execute(select(Source).where(Source.workspace_id == workspace.id).order_by(Source.name))
         .scalars()
@@ -37,7 +43,7 @@ def list_sources(
         "source_types": list(SourceType),
         "error": error,
         "csrf_token": token,
-        **build_shell_context(db, workspace),
+        **build_shell_context(request, db, workspace, membership),
     }
     response = templates.TemplateResponse(request, "sources/list.html", context)
     apply_csrf_cookie(request, response, token)
@@ -50,10 +56,11 @@ def create_source(
     csrf_token: str = Form(...),
     name: str = Form(...),
     source_type: str = Form(...),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
+    workspace = membership.workspace
     try:
         resolved_type = SourceType(source_type)
     except ValueError as exc:

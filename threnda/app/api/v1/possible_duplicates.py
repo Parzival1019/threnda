@@ -14,9 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from threnda.app.api.deps import get_db
+from threnda.app.api.deps import get_db, require_analyst, require_viewer
 from threnda.app.models.enums import PossibleDuplicateStatus
 from threnda.app.models.possible_duplicate import PossibleDuplicate
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.schemas.common import Page
 from threnda.app.schemas.possible_duplicate import PossibleDuplicateRead
 from threnda.app.services.possible_duplicates import (
@@ -32,16 +33,18 @@ router = APIRouter(prefix="/possible-duplicates", tags=["possible-duplicates"])
 
 @router.get("", response_model=Page[PossibleDuplicateRead])
 def list_possible_duplicates(
-    workspace_id: int = Query(..., description="Workspace to scope results to."),
     status: PossibleDuplicateStatus | None = Query(
         default=PossibleDuplicateStatus.PENDING,
         description="Defaults to only the pending review queue.",
     ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    membership: WorkspaceMembership = Depends(require_viewer),
     db: Session = Depends(get_db),
 ) -> Page[PossibleDuplicateRead]:
-    stmt = select(PossibleDuplicate).where(PossibleDuplicate.workspace_id == workspace_id)
+    stmt = select(PossibleDuplicate).where(
+        PossibleDuplicate.workspace_id == membership.workspace_id
+    )
     if status is not None:
         stmt = stmt.where(PossibleDuplicate.status == status)
 
@@ -60,17 +63,16 @@ def list_possible_duplicates(
 @router.post("/{possible_duplicate_id}/merge", response_model=PossibleDuplicateRead)
 def merge_possible_duplicate(
     possible_duplicate_id: int,
-    workspace_id: int = Query(..., description="Workspace to scope this action to."),
-    actor: str = Query(
-        default="system",
-        description="Placeholder actor identity until authentication exists (Milestone 7).",
-    ),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> PossibleDuplicateRead:
     """Confirm the candidate: link the finding to the candidate exposure."""
     try:
         candidate = resolve_merge(
-            db, workspace_id=workspace_id, possible_duplicate_id=possible_duplicate_id, actor=actor
+            db,
+            workspace_id=membership.workspace_id,
+            possible_duplicate_id=possible_duplicate_id,
+            actor=membership.user.username,
         )
     except PossibleDuplicateNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Possible duplicate not found") from exc
@@ -86,17 +88,16 @@ def merge_possible_duplicate(
 @router.post("/{possible_duplicate_id}/keep-separate", response_model=PossibleDuplicateRead)
 def keep_possible_duplicate_separate(
     possible_duplicate_id: int,
-    workspace_id: int = Query(..., description="Workspace to scope this action to."),
-    actor: str = Query(
-        default="system",
-        description="Placeholder actor identity until authentication exists (Milestone 7).",
-    ),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> PossibleDuplicateRead:
     """Reject the candidate: give the finding its own standalone exposure."""
     try:
         candidate = resolve_keep_separate(
-            db, workspace_id=workspace_id, possible_duplicate_id=possible_duplicate_id, actor=actor
+            db,
+            workspace_id=membership.workspace_id,
+            possible_duplicate_id=possible_duplicate_id,
+            actor=membership.user.username,
         )
     except PossibleDuplicateNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Possible duplicate not found") from exc

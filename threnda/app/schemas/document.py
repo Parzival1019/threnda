@@ -57,8 +57,12 @@ class DocumentDetailRead(DocumentRead):
 
 
 class CandidateDecision(BaseModel):
+    """The accept decision body. ``actor`` is no longer a client-supplied
+    field — see docs/security.md, "Authorization" — it is always the
+    authenticated session's username.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
     severity: SeverityLevel | None = None
-    actor: str = Field(default="api", min_length=1, max_length=200)

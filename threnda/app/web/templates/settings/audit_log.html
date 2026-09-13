@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block title %}Audit log{% endblock %}
+{% block page_title %}Audit log{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Administrative audit log</h2>
+  <p>Security-sensitive actions only — logins, membership changes, webhook
+     configuration, exports. Never raw finding content, passwords, session
+     tokens or webhook secrets.</p>
+</div>
+
+{% if entries %}
+<div class="card">
+  {% for entry in entries %}
+  <div class="card-row">
+    <span class="k mono">{{ entry.created_at | humanize_dt }}</span>
+    <span class="v">{{ entry.event_type.value }}</span>
+    <span class="v cell-muted">{{ entry.actor_username or "—" }}</span>
+    <span class="v cell-muted">{{ entry.target_type or "" }}{% if entry.target_id %} #{{ entry.target_id }}{% endif %}</span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No audit entries yet</h3>
+  <p>Logins, membership changes and webhook activity will show up here.</p>
+</div>
+{% endif %}
+{% endblock %}

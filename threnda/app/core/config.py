@@ -52,6 +52,31 @@ class Settings(BaseSettings):
     env: Environment = Environment.DEVELOPMENT
     secret_key: str = "change-me"  # noqa: S105 - not a credential, a placeholder to override
     database_url: str = "sqlite:///./data/threnda.db"
+
+    # Cookie security. Session/CSRF cookies are always HttpOnly and
+    # SameSite=Strict; the ``Secure`` flag is set whenever ``is_production``
+    # is true or the current request is HTTPS (see
+    # threnda.app.web.cookies.cookie_secure). Set this to explicitly force
+    # ``Secure`` off for local development/testing behind plain HTTP even
+    # with THRENDA_ENV=production (e.g. exercising a production config
+    # locally without TLS) — never set it in a real deployment.
+    allow_insecure_cookies: bool = False
+
+    # Outbound webhook delivery (see docs/webhooks.md). Local-only override
+    # to allow delivering to loopback/private addresses, which production
+    # SSRF protection otherwise blocks unconditionally — needed to point a
+    # webhook at a test receiver on localhost during development/tests.
+    webhook_allow_private_targets: bool = False
+    webhook_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    webhook_max_response_bytes: int = Field(default=65_536, ge=1024, le=1_000_000)
+
+    # First-admin bootstrap (see docs/deployment.md, "Bootstrapping the
+    # first admin"). Read once, only when the ``users`` table is empty, by
+    # ``threnda.app.cli.bootstrap_admin`` — never by the web application
+    # itself. Left blank by default; Community never invents credentials.
+    bootstrap_admin_username: str = ""
+    bootstrap_admin_password: str = ""
+
     ai_provider: AIProvider = AIProvider.DISABLED
     ai_model: str = ""
     ai_base_url: str = "http://127.0.0.1:11434"

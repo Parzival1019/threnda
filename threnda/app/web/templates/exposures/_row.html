@@ -3,8 +3,7 @@
      {% if oob %}hx-swap-oob="true"{% endif %}
      hx-get="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}"
      hx-target="#detail-panel" hx-swap="innerHTML">
-  <input type="checkbox" name="ids" value="{{ exposure.id }}" aria-label="Select finding {{ exposure.id }}"
-         onclick="event.stopPropagation()">
+  <input type="checkbox" name="ids" value="{{ exposure.id }}" aria-label="Select finding {{ exposure.id }}">
   <span class="sev-icon {{ exposure.severity | severity_class }}">
     <span class="shape" aria-hidden="true"></span>
     <span class="word">{{ exposure.severity | severity_letter }}</span>

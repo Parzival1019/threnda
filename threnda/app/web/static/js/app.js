@@ -43,6 +43,16 @@
     }
   }
 
+  // Selecting a row's checkbox must not also trigger the row's own
+  // hx-get (which opens the detail panel) — a delegated listener instead
+  // of an inline onclick= attribute, so the response security headers can
+  // set a strict script-src with no 'unsafe-inline'.
+  document.addEventListener("click", function (event) {
+    if (event.target.matches && event.target.matches("input[type='checkbox'][name='ids']")) {
+      event.stopPropagation();
+    }
+  });
+
   document.addEventListener("change", function (event) {
     if (event.target.matches && event.target.matches("input[name='ids']")) {
       var bar = document.getElementById("bulk-bar");

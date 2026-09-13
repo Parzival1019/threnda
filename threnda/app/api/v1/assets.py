@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from threnda.app.api.deps import get_db
+from threnda.app.api.deps import get_db, require_analyst, require_viewer
 from threnda.app.models.asset import Asset
 from threnda.app.models.enums import AssetEnvironment, AssetType
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.schemas.asset import AssetRead, AssetUpdate
 from threnda.app.schemas.common import Page
 from threnda.app.services.assets import apply_asset_update
@@ -25,14 +26,14 @@ def _get_asset_or_404(db: Session, workspace_id: int, asset_id: int) -> Asset:
 
 @router.get("", response_model=Page[AssetRead])
 def list_assets(
-    workspace_id: int = Query(..., description="Workspace to scope results to."),
     asset_type: AssetType | None = None,
     environment: AssetEnvironment | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    membership: WorkspaceMembership = Depends(require_viewer),
     db: Session = Depends(get_db),
 ) -> Page[AssetRead]:
-    stmt = select(Asset).where(Asset.workspace_id == workspace_id)
+    stmt = select(Asset).where(Asset.workspace_id == membership.workspace_id)
     if asset_type is not None:
         stmt = stmt.where(Asset.asset_type == asset_type)
     if environment is not None:
@@ -52,10 +53,10 @@ def list_assets(
 def update_asset(
     asset_id: int,
     payload: AssetUpdate,
-    workspace_id: int = Query(..., description="Workspace to scope this action to."),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> AssetRead:
-    asset = _get_asset_or_404(db, workspace_id, asset_id)
+    asset = _get_asset_or_404(db, membership.workspace_id, asset_id)
     changes = payload.model_dump(exclude_unset=True)
     apply_asset_update(
         db,

@@ -16,7 +16,7 @@ from starlette.responses import RedirectResponse, Response
 from threnda.app.api.deps import get_db
 from threnda.app.models.enums import PossibleDuplicateStatus
 from threnda.app.models.possible_duplicate import PossibleDuplicate
-from threnda.app.models.workspace import Workspace
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.possible_duplicates import (
     PossibleDuplicateAlreadyResolvedError,
     PossibleDuplicateNotFoundError,
@@ -24,19 +24,23 @@ from threnda.app.services.possible_duplicates import (
     resolve_merge,
 )
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
-from threnda.app.web.deps import build_shell_context, get_current_workspace, templates
+from threnda.app.web.deps import (
+    build_shell_context,
+    get_current_membership,
+    require_analyst,
+    templates,
+)
 
 router = APIRouter(prefix="/review", tags=["web-review"])
-
-ACTOR = "web"  # see threnda.app.web.routes.exposures.ACTOR for the caveat.
 
 
 @router.get("")
 def review_queue(
     request: Request,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     candidates = (
         db.execute(
             select(PossibleDuplicate)
@@ -59,7 +63,7 @@ def review_queue(
         "active_nav": "review",
         "candidates": candidates,
         "csrf_token": token,
-        **build_shell_context(db, workspace),
+        **build_shell_context(request, db, workspace, membership),
     }
     response = templates.TemplateResponse(request, "review/list.html", context)
     apply_csrf_cookie(request, response, token)
@@ -71,13 +75,17 @@ def merge(
     request: Request,
     possible_duplicate_id: int,
     csrf_token: str = Form(...),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
+    workspace = membership.workspace
     try:
         resolve_merge(
-            db, workspace_id=workspace.id, possible_duplicate_id=possible_duplicate_id, actor=ACTOR
+            db,
+            workspace_id=workspace.id,
+            possible_duplicate_id=possible_duplicate_id,
+            actor=membership.user.username,
         )
     except PossibleDuplicateNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Possible duplicate not found") from exc
@@ -91,13 +99,17 @@ def keep_separate(
     request: Request,
     possible_duplicate_id: int,
     csrf_token: str = Form(...),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
+    workspace = membership.workspace
     try:
         resolve_keep_separate(
-            db, workspace_id=workspace.id, possible_duplicate_id=possible_duplicate_id, actor=ACTOR
+            db,
+            workspace_id=workspace.id,
+            possible_duplicate_id=possible_duplicate_id,
+            actor=membership.user.username,
         )
     except PossibleDuplicateNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Possible duplicate not found") from exc

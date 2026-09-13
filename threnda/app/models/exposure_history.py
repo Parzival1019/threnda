@@ -29,10 +29,9 @@ class ExposureHistory(Base):
     )
     previous_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Free-text identity of who/what made the change. There is no
-    # authentication yet (Milestone 7), so this is presently a
-    # caller-supplied label (defaulting to "system") rather than a verified
-    # user identity — see docs/implementation-plan.md, Milestone 1 decisions.
+    # Free-text identity of who/what made the change — always the
+    # authenticated session's username since Milestone 7 (see
+    # threnda.app.services.exposures.apply_exposure_update's callers).
     actor: Mapped[str | None] = mapped_column(String(200), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utcnow, nullable=False, index=True

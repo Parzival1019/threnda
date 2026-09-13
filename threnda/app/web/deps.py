@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import Depends, Request, Response
+from fastapi import Depends, HTTPException, Request, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,13 +15,24 @@ from threnda.app import __version__
 from threnda.app.api.deps import get_db
 from threnda.app.models.candidate_finding import CandidateFinding
 from threnda.app.models.document import Document
-from threnda.app.models.enums import CandidateFindingStatus, ExposureStatus, PossibleDuplicateStatus
+from threnda.app.models.enums import (
+    CandidateFindingStatus,
+    ExposureStatus,
+    PossibleDuplicateStatus,
+    WorkspaceRole,
+)
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.import_run import ImportRun
 from threnda.app.models.possible_duplicate import PossibleDuplicate
 from threnda.app.models.source import Source
+from threnda.app.models.user import User
 from threnda.app.models.workspace import Workspace
-from threnda.app.web.errors import NoWorkspaceError
+from threnda.app.models.workspace_membership import WorkspaceMembership
+from threnda.app.services.auth import validate_session
+from threnda.app.services.memberships import role_at_least
+from threnda.app.web.cookies import SESSION_COOKIE_NAME, WORKSPACE_COOKIE_NAME, cookie_secure
+from threnda.app.web.csrf import get_csrf_token
+from threnda.app.web.errors import NotAuthenticatedError, NoWorkspaceError
 from threnda.app.web.filters import register_filters
 
 
@@ -47,24 +58,48 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 register_filters(templates.env)
 templates.env.globals["merge_query"] = merge_query
 
-WORKSPACE_COOKIE_NAME = "threnda_workspace_id"
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """Resolve the authenticated user from the session cookie.
+
+    Raises ``NotAuthenticatedError`` (redirected to ``/login?next=...`` by
+    ``threnda.app.web.errors``) rather than a bare ``401`` — a browser
+    session with no/an expired cookie is the ordinary "please log in"
+    case, not an API error response.
+    """
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    session = validate_session(db, token)
+    if session is None:
+        raise NotAuthenticatedError(next_path=request.url.path)
+    request.state.session = session
+    return session.user
 
 
-def get_current_workspace(
+def _lookup_membership(db: Session, user_id: int, workspace_id: int) -> WorkspaceMembership | None:
+    return db.execute(
+        select(WorkspaceMembership).where(
+            WorkspaceMembership.workspace_id == workspace_id,
+            WorkspaceMembership.user_id == user_id,
+        )
+    ).scalar_one_or_none()
+
+
+def get_current_membership(
     request: Request,
     response: Response,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Workspace:
-    """Resolve which workspace this request is scoped to.
+) -> WorkspaceMembership:
+    """Resolve which workspace this request is scoped to, and the caller's role in it.
 
-    No authentication exists yet (Milestone 7), so there is no session to
-    derive this from. Precedence: an explicit ``?workspace_id=`` query
-    param (validated) > the ``threnda_workspace_id`` cookie (validated,
-    refreshed to match a query-param override) > the first workspace by
-    id. Raises ``NoWorkspaceError`` (redirected to onboarding) if none
-    exist at all. The cookie is a plain browsing convenience, not an
-    access boundary — identical caveat to the JSON API's caller-supplied
-    ``workspace_id`` (see ``api/v1/exposures.py``).
+    Precedence: an explicit ``?workspace_id=`` query param > the
+    ``threnda_workspace_id`` cookie > the user's first workspace by id.
+    Unlike before Milestone 7, a ``workspace_id`` (from any source) only
+    ever resolves to a workspace the authenticated user actually has a
+    ``WorkspaceMembership`` in — one they don't belong to is silently
+    skipped, falling through to the cookie/default, exactly like an id
+    that names no workspace at all. Raises ``NoWorkspaceError``
+    (redirected to onboarding) if the user has no workspace at all.
     """
     query_workspace_id = request.query_params.get("workspace_id")
     if query_workspace_id is not None:
@@ -72,30 +107,69 @@ def get_current_workspace(
             workspace_id = int(query_workspace_id)
         except ValueError:
             workspace_id = -1
-        workspace = db.get(Workspace, workspace_id)
-        if workspace is not None:
-            response.set_cookie(WORKSPACE_COOKIE_NAME, str(workspace.id), samesite="lax")
-            return workspace
+        membership = _lookup_membership(db, user.id, workspace_id)
+        if membership is not None:
+            response.set_cookie(
+                WORKSPACE_COOKIE_NAME,
+                str(workspace_id),
+                httponly=True,
+                samesite="strict",
+                secure=cookie_secure(request.app.state.settings, request),
+            )
+            return membership
 
     cookie_workspace_id = request.cookies.get(WORKSPACE_COOKIE_NAME)
     if cookie_workspace_id is not None:
         try:
-            workspace = db.get(Workspace, int(cookie_workspace_id))
+            membership = _lookup_membership(db, user.id, int(cookie_workspace_id))
         except ValueError:
-            workspace = None
-        if workspace is not None:
-            return workspace
+            membership = None
+        if membership is not None:
+            return membership
 
-    first_workspace = db.execute(
-        select(Workspace).order_by(Workspace.id).limit(1)
+    first_membership = db.execute(
+        select(WorkspaceMembership)
+        .where(WorkspaceMembership.user_id == user.id)
+        .order_by(WorkspaceMembership.workspace_id)
+        .limit(1)
     ).scalar_one_or_none()
-    if first_workspace is None:
+    if first_membership is None:
         raise NoWorkspaceError
-    return first_workspace
+    return first_membership
 
 
-def build_shell_context(db: Session, workspace: Workspace) -> dict[str, Any]:
-    """Sidebar/topbar data every full-page template needs (nav counts, footer)."""
+def get_current_workspace(
+    membership: WorkspaceMembership = Depends(get_current_membership),
+) -> Workspace:
+    return membership.workspace
+
+
+def require_analyst(
+    membership: WorkspaceMembership = Depends(get_current_membership),
+) -> WorkspaceMembership:
+    """Require at least the ``analyst`` role — the floor for any write action."""
+    if not role_at_least(membership.role, WorkspaceRole.ANALYST):
+        raise HTTPException(status_code=403, detail="Insufficient permissions for this action.")
+    return membership
+
+
+def require_admin(
+    membership: WorkspaceMembership = Depends(get_current_membership),
+) -> WorkspaceMembership:
+    """Require the ``admin`` role — member/webhook management."""
+    if not role_at_least(membership.role, WorkspaceRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Insufficient permissions for this action.")
+    return membership
+
+
+def build_shell_context(
+    request: Request, db: Session, workspace: Workspace, membership: WorkspaceMembership
+) -> dict[str, Any]:
+    """Sidebar/topbar data every full-page template needs (nav counts, footer,
+    and a CSRF token for the sidebar's logout form — every full-page route
+    renders the shell, so it is generated once here rather than requiring
+    each route to also remember to add it just for that one form).
+    """
     open_count = db.execute(
         select(func.count())
         .select_from(Exposure)
@@ -135,6 +209,11 @@ def build_shell_context(db: Session, workspace: Workspace) -> dict[str, Any]:
 
     return {
         "workspace": workspace,
+        "csrf_token": get_csrf_token(request),
+        "current_user": membership.user,
+        "current_role": membership.role,
+        "is_admin": role_at_least(membership.role, WorkspaceRole.ADMIN),
+        "is_analyst": role_at_least(membership.role, WorkspaceRole.ANALYST),
         "nav_open_count": open_count,
         "nav_review_count": review_count,
         "nav_source_count": source_count,

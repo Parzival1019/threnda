@@ -171,6 +171,44 @@ class DocumentStatus(enum.StrEnum):
     FAILED = "failed"
 
 
+class WorkspaceRole(enum.StrEnum):
+    """A user's permission level within one workspace.
+
+    See docs/security.md, "Roles" — ``ADMIN`` manages membership and every
+    ``ANALYST`` capability; ``ANALYST`` operates findings/imports/documents/
+    exports; ``VIEWER`` is read-only. Roles are per-membership, not global —
+    the same user can be an admin of one workspace and a viewer of another.
+    """
+
+    ADMIN = "admin"
+    ANALYST = "analyst"
+    VIEWER = "viewer"
+
+
+class AuditEventType(enum.StrEnum):
+    """What kind of security-sensitive event an ``AuditLogEntry`` records.
+
+    Deliberately a closed, controlled vocabulary (like every other event-type
+    enum in this schema) rather than a free-form string — see
+    docs/security.md, "Auditing".
+    """
+
+    USER_CREATED = "user_created"
+    USER_DEACTIVATED = "user_deactivated"
+    USER_REACTIVATED = "user_reactivated"
+    LOGIN_SUCCEEDED = "login_succeeded"
+    LOGIN_FAILED = "login_failed"
+    LOGOUT = "logout"
+    MEMBER_ADDED = "member_added"
+    MEMBER_ROLE_CHANGED = "member_role_changed"
+    MEMBER_REMOVED = "member_removed"
+    WEBHOOK_CREATED = "webhook_created"
+    WEBHOOK_UPDATED = "webhook_updated"
+    WEBHOOK_DELETED = "webhook_deleted"
+    WEBHOOK_DELIVERY_TRIGGERED = "webhook_delivery_triggered"
+    EXPORT_DOWNLOADED = "export_downloaded"
+
+
 class CandidateFindingStatus(enum.StrEnum):
     """Review state of a ``CandidateFinding``.
 

@@ -28,7 +28,7 @@ from threnda.app.api.deps import get_db
 from threnda.app.models.enums import SourceType
 from threnda.app.models.import_run import ImportRun
 from threnda.app.models.source import Source
-from threnda.app.models.workspace import Workspace
+from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.ingestion.csv_importer import KNOWN_TARGET_FIELDS, guess_mapping
 from threnda.app.services.ingestion.upload import (
     ContentDoesNotMatchFormatError,
@@ -38,7 +38,12 @@ from threnda.app.services.ingestion.upload import (
     handle_upload,
 )
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
-from threnda.app.web.deps import build_shell_context, get_current_workspace, templates
+from threnda.app.web.deps import (
+    build_shell_context,
+    get_current_membership,
+    require_analyst,
+    templates,
+)
 
 router = APIRouter(prefix="/imports", tags=["web-imports"])
 
@@ -70,9 +75,10 @@ def _read_csv_header(raw: bytes) -> list[str] | None:
 def list_imports(
     request: Request,
     offset: int = 0,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     stmt = (
         select(ImportRun)
         .where(ImportRun.workspace_id == workspace.id)
@@ -86,7 +92,7 @@ def list_imports(
         "runs": runs,
         "offset": offset,
         "page_size": PAGE_SIZE,
-        **build_shell_context(db, workspace),
+        **build_shell_context(request, db, workspace, membership),
     }
     return templates.TemplateResponse(request, "imports/list.html", context)
 
@@ -94,9 +100,10 @@ def list_imports(
 @router.get("/new")
 def new_import_form(
     request: Request,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     sources = (
         db.execute(
             select(Source)
@@ -114,7 +121,7 @@ def new_import_form(
         "active_nav": "imports",
         "sources": sources,
         "csrf_token": token,
-        **build_shell_context(db, workspace),
+        **build_shell_context(request, db, workspace, membership),
     }
     response = templates.TemplateResponse(request, "imports/new.html", context)
     apply_csrf_cookie(request, response, token)
@@ -126,7 +133,7 @@ async def sniff_csv_header(
     request: Request,
     source_id: int = Form(...),
     file: UploadFile = File(...),
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
     """htmx partial: a CSV mapping table pre-filled from the file's header row.
@@ -134,6 +141,7 @@ async def sniff_csv_header(
     Returns an empty fragment for a non-CSV source, or one that already has
     a saved mapping — no mapping step is needed in either case.
     """
+    workspace = membership.workspace
     source = db.get(Source, source_id)
     if source is None or source.workspace_id != workspace.id:
         raise HTTPException(status_code=404, detail="Source not found in this workspace")
@@ -152,9 +160,10 @@ async def sniff_csv_header(
 @router.post("/new")
 async def create_import(
     request: Request,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(require_analyst),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     form = await request.form()
     csrf_value = form.get("csrf_token")
     verify_csrf(request, str(csrf_value) if csrf_value is not None else None)
@@ -212,7 +221,7 @@ async def create_import(
         "outcome": outcome,
         "source": source,
         "csrf_token": token,
-        **build_shell_context(db, workspace),
+        **build_shell_context(request, db, workspace, membership),
     }
     response = templates.TemplateResponse(request, "imports/_result.html", context)
     apply_csrf_cookie(request, response, token)
@@ -223,15 +232,16 @@ async def create_import(
 def import_detail(
     request: Request,
     import_run_id: int,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
+    workspace = membership.workspace
     import_run = db.get(ImportRun, import_run_id)
     if import_run is None or import_run.workspace_id != workspace.id:
         raise HTTPException(status_code=404, detail="Import not found")
     context = {
         "active_nav": "imports",
         "run": import_run,
-        **build_shell_context(db, workspace),
+        **build_shell_context(request, db, workspace, membership),
     }
     return templates.TemplateResponse(request, "imports/detail.html", context)

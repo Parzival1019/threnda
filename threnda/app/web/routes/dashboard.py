@@ -14,8 +14,8 @@ from threnda.app.api.deps import get_db
 from threnda.app.models.enums import ExposureStatus, SeverityLevel
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.mixins import utcnow
-from threnda.app.models.workspace import Workspace
-from threnda.app.web.deps import build_shell_context, get_current_workspace, templates
+from threnda.app.models.workspace_membership import WorkspaceMembership
+from threnda.app.web.deps import build_shell_context, get_current_membership, templates
 
 router = APIRouter(tags=["web-dashboard"])
 
@@ -32,9 +32,10 @@ def _count(db: Session, workspace_id: int, *conditions: ColumnElement[bool]) -> 
 @router.get("/")
 def dashboard(
     request: Request,
-    workspace: Workspace = Depends(get_current_workspace),
+    membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> object:
+    workspace = membership.workspace
     now = utcnow()
     week_ago = now - timedelta(days=7)
     today = now.date()
@@ -87,6 +88,6 @@ def dashboard(
         "new_this_week": new_this_week,
         "resolved_this_week": resolved_this_week,
         "avg_age_days": avg_age_days,
-        **build_shell_context(db, workspace),
+        **build_shell_context(request, db, workspace, membership),
     }
     return templates.TemplateResponse(request, "dashboard.html", context)

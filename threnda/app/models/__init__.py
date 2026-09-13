@@ -10,6 +10,7 @@ resolve.
 from __future__ import annotations
 
 from threnda.app.models.asset import Asset
+from threnda.app.models.audit_log import AuditLogEntry
 from threnda.app.models.candidate_finding import CandidateFinding
 from threnda.app.models.document import Document
 from threnda.app.models.exposure import Exposure
@@ -18,10 +19,15 @@ from threnda.app.models.finding import Finding
 from threnda.app.models.import_run import ImportRun
 from threnda.app.models.possible_duplicate import PossibleDuplicate
 from threnda.app.models.source import Source
+from threnda.app.models.user import User
+from threnda.app.models.user_session import UserSession
+from threnda.app.models.webhook_endpoint import WebhookEndpoint
 from threnda.app.models.workspace import Workspace
+from threnda.app.models.workspace_membership import WorkspaceMembership
 
 __all__ = [
     "Asset",
+    "AuditLogEntry",
     "CandidateFinding",
     "Document",
     "Exposure",
@@ -30,5 +36,9 @@ __all__ = [
     "ImportRun",
     "PossibleDuplicate",
     "Source",
+    "User",
+    "UserSession",
+    "WebhookEndpoint",
     "Workspace",
+    "WorkspaceMembership",
 ]
