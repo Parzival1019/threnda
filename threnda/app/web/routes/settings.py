@@ -261,7 +261,7 @@ def install_local_ai_form(
         )
     started = start_embedded_ai_install(request.app.state.settings)
     notice = (
-        "Local AI installation started. The verified model is about 4.7 GB; refresh this "
+        "Local AI installation started. The verified model is about 1.2 GB; refresh this "
         "page to see its status."
         if started
         else "Local AI installation is already running."

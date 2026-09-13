@@ -8,7 +8,7 @@ and reports you already run, turns them into one consistent finding model, and
 puts the result into a single actionable queue that a security team can
 actually work through.
 
-> **Status: early development / pre-alpha.**
+> **Status: Community v0.1.0 release candidate.**
 > Milestones 1–8 (project foundation, ingestion, deduplication and
 > exposures, workflow and risk scoring, web UI, pentest ingestion/optional
 > local AI, and authentication/hardening/packaging) are implemented and

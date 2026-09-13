@@ -23,7 +23,18 @@ threnda ai install
 threnda ai status
 ```
 
-The normal small distribution downloads about 4.7 GB once. An air-gapped
+Release maintainers can create a checksum-verified bundle for the current
+platform without hand-assembling files:
+
+```bash
+threnda ai bundle --output dist/threnda-ai-bundle
+```
+
+The output contains every runtime/model/license artifact plus a pinned JSON
+manifest. Archive that directory as a release asset; an offline install can
+pass the extracted directory to `threnda ai install --bundle`.
+
+The normal small distribution downloads about 1.2 GB once. An air-gapped
 distribution can include the exact same files in an offline bundle and run:
 
 ```bash
@@ -39,11 +50,15 @@ Archive paths are validated before extraction.
 - **Runtime:** llama.cpp `b10516`, distributed under MIT, with official
   prebuilt packages for macOS Apple Silicon, macOS Intel, Linux x64 and Linux
   ARM64.
-- **Model:** the official Qwen `Qwen2.5-7B-Instruct-GGUF` Q4_K_M release,
-  revision-pinned and distributed under Apache-2.0. It is split into two GGUF
-  files totalling approximately 4.7 GB.
+- **Model:** the official Qwen `Qwen2.5-1.5B-Instruct-GGUF` Q4_K_M release,
+  revision-pinned and distributed under Apache-2.0. The approximately 1.1 GB
+  GGUF keeps the complete container comfortably inside the Community edition's
+  lightweight 16 GB Apple-Silicon target.
 - **Acceleration:** the macOS package uses Metal through llama.cpp. Linux uses
   the matching official CPU package in the Community bundle.
+
+The production container includes the small OpenMP runtime required by the
+official Linux llama.cpp binaries; users do not install it separately.
 
 The third-party runtime license is retained inside the installed runtime, and
 the checksum-pinned model license is installed beside the GGUF files. See
@@ -112,7 +127,7 @@ fragments are rejected. Ordinary Threnda Community users do not need this mode.
 
 - The managed bundle currently supports macOS arm64/x64 and Linux arm64/x64.
   Windows packaging is not yet included.
-- Model installation requires around 5 GB of disk space and an internet
+- Model installation requires around 1.5 GB of disk space and an internet
   connection unless the release includes an offline bundle.
 - A containerized macOS deployment cannot use Metal from inside its Linux
   container; native macOS development gets hardware acceleration. The CPU path

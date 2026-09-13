@@ -3,10 +3,11 @@
 # Multi-stage, non-root production image for Threnda Community.
 #
 # Stage 1 builds a virtualenv (so the runtime stage never needs a compiler
-# or pip's build machinery); stage 2 copies only that venv plus the
-# application source into a slim runtime image and drops root before the
-# process ever runs. See docs/deployment.md for the full operational
-# contract (env vars, healthcheck, entrypoint behaviour).
+# or pip's build machinery); stage 2 prepares the slim runtime filesystem;
+# stage 3 flattens that prepared filesystem so superseded packages from the
+# base-image layer history do not produce false-positive vulnerability results.
+# The final image drops root before the process ever runs. See
+# docs/deployment.md for the full operational contract.
 
 FROM python:3.12-slim AS builder
 
@@ -27,19 +28,20 @@ COPY threnda ./threnda
 COPY migrations ./migrations
 COPY alembic.ini ./
 
-RUN pip install --no-cache-dir --upgrade pip \
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" \
     && pip install --no-cache-dir ".[postgres]"
 
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim AS prepared-runtime
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 curl \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends libpq5 libgomp1 curl \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system threnda \
     && useradd --system --gid threnda --home-dir /app --shell /usr/sbin/nologin threnda
 
 WORKDIR /app
-ENV PATH="/venv/bin:${PATH}" \
+ENV PATH="/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
@@ -49,9 +51,20 @@ COPY --from=builder /build/migrations ./migrations
 COPY --from=builder /build/alembic.ini ./alembic.ini
 COPY docker/entrypoint.sh /usr/local/bin/threnda-entrypoint
 
-RUN chmod +x /usr/local/bin/threnda-entrypoint \
+RUN /venv/bin/python -m pip uninstall -y pip setuptools \
+    && /usr/local/bin/python -m pip uninstall -y pip setuptools \
+    && chmod +x /usr/local/bin/threnda-entrypoint \
     && mkdir -p /app/data \
     && chown -R threnda:threnda /app
+
+FROM scratch AS runtime
+
+COPY --from=prepared-runtime / /
+
+WORKDIR /app
+ENV PATH="/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 USER threnda
 

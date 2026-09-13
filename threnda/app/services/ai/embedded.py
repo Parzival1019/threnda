@@ -27,9 +27,9 @@ from urllib.request import urlopen
 from threnda.app.core.config import Settings
 
 RUNTIME_VERSION = "b10516"
-MODEL_NAME = "Qwen2.5 7B Instruct Q4_K_M"
-MODEL_ID = "qwen2.5-7b-instruct-q4_k_m"
-MODEL_REVISION = "bb5d59e06d9551d752d08b292a50eb208b07ab1f"
+MODEL_NAME = "Qwen2.5 1.5B Instruct Q4_K_M"
+MODEL_ID = "qwen2.5-1.5b-instruct-q4_k_m"
+MODEL_REVISION = "91cad51170dc346986eccefdc2dd33a9da36ead9"
 DOWNLOAD_TIMEOUT_SECONDS = 60
 CHUNK_SIZE = 1024 * 1024
 
@@ -75,22 +75,15 @@ _RUNTIME_ARTIFACTS = {
 
 _MODEL_ARTIFACTS = (
     Artifact(
-        "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf",
-        f"https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/{MODEL_REVISION}/"
-        "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf",
-        "dfce12e3862a5283ccfb88221b48480e58745165de856439950d0f22590580db",
-        3_993_201_344,
-    ),
-    Artifact(
-        "qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf",
-        f"https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/{MODEL_REVISION}/"
-        "qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf",
-        "539cf93f78e887edea1c04e2d7d8cdaca9d01dae9c9025bcb8accbe29df3d72a",
-        689_872_288,
+        "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        f"https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/"
+        f"{MODEL_REVISION}/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+        1_117_320_736,
     ),
     Artifact(
         "QWEN-MODEL-LICENSE-APACHE-2.0.txt",
-        f"https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/{MODEL_REVISION}/LICENSE",
+        f"https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/{MODEL_REVISION}/LICENSE",
         "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e",
         11_343,
     ),
@@ -268,6 +261,27 @@ def install_embedded_ai(settings: Settings, *, bundle_dir: Path | None = None) -
             _write_state(paths, stage="failed", error=str(exc))
             raise
     return embedded_ai_status(settings)
+
+
+def build_offline_bundle(output_dir: Path, *, source_dir: Path | None = None) -> Path:
+    """Create a verified, platform-specific offline bundle and manifest."""
+    runtime = _runtime_artifact()
+    output = output_dir.expanduser().resolve()
+    output.mkdir(parents=True, exist_ok=True, mode=0o700)
+    artifacts = (runtime, *_MODEL_ARTIFACTS)
+    for artifact in artifacts:
+        _download(artifact, output / artifact.filename, source_dir)
+    manifest = {
+        "schema_version": 1,
+        "runtime_version": RUNTIME_VERSION,
+        "model": MODEL_NAME,
+        "platform": {"system": platform.system(), "machine": platform.machine().lower()},
+        "artifacts": [asdict(artifact) for artifact in artifacts],
+    }
+    temporary = output / "manifest.json.tmp"
+    temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(output / "manifest.json")
+    return output
 
 
 def start_embedded_ai_install(settings: Settings) -> bool:

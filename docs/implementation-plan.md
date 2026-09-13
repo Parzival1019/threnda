@@ -1191,12 +1191,13 @@ final code, in this order:
 
 ## Milestone 8 — self-contained Local AI
 
-Status: implemented, pending owner review.
+Status: release candidate implemented and verified; license/publication remain
+owner-gated.
 
 - [x] `EmbeddedAIProvider` is now the zero-configuration provider default;
       AI actions themselves remain explicit and optional.
 - [x] Threnda manages a pinned llama.cpp `b10516` runtime and the official
-      Qwen2.5 7B Instruct Q4_K_M GGUF model. macOS arm64/x64 and Linux
+      Qwen2.5 1.5B Instruct Q4_K_M GGUF model. macOS arm64/x64 and Linux
       arm64/x64 packages are selected automatically.
 - [x] Runtime and model downloads are revision-pinned, byte-size checked and
       SHA-256 verified before use. Runtime archives are path-validated before
@@ -1217,4 +1218,27 @@ Status: implemented, pending owner review.
 - [x] Hermetic tests cover provider selection, loopback transport, tampered
       artifacts, archive traversal, unsupported platforms, the settings page
       and CSRF protection. A real Apple Silicon smoke test loaded the bundled
-      model through llama.cpp/Metal and extracted a synthetic critical finding.
+      model through llama.cpp/Metal and extracted a synthetic finding.
+
+### Milestone 8 / v0.1.0 release-candidate verification
+
+- The full local quality gate passes: Ruff lint and formatting, strict mypy,
+  `pip check`, `pip-audit`, a high-severity Bandit scan and **649 tests**.
+- A fresh Alembic SQLite `upgrade head` → `downgrade -1` → `upgrade head`
+  round trip passes.
+- A separate Docker Compose project reached healthy state with PostgreSQL and
+  completed login, JSON import, exposure listing and CSV export over real HTTP.
+- The pinned model was loaded by the managed runtime and extracted a synthetic
+  finding both natively on Apple Silicon/Metal and inside the final Linux arm64
+  container on CPU. This exercise found and fixed the missing Linux OpenMP
+  runtime dependency and clarified the requested 0.0–1.0 confidence schema.
+- The original 7B model was replaced with the official Apache-2.0 Qwen2.5 1.5B
+  Q4_K_M artifact after the real Docker path exceeded the intended 4–6 GB
+  memory budget. The smaller model is about 1.1 GB and works within the target.
+- Dependency auditing prompted an upgrade from `pypdf` 5.x to the remediated
+  6.x line. The release image also applies current Debian package upgrades and
+  removes build/package-management tooling after installation. The final image
+  passed a Trivy scan with zero fixable high/critical vulnerabilities.
+- Wheel, source distribution and a checksum-verified macOS arm64 offline Local
+  AI bundle are generated as v0.1.0 release assets. Their final checksums are
+  regenerated after the release commit.

@@ -159,7 +159,9 @@ class OllamaAIProvider:
     def extract_findings_from_text(self, text: str) -> tuple[AICandidate, ...]:
         result = self._generate(
             'Return {"findings": [{"title": str, "severity": str|null, '
-            '"excerpt": str, "confidence": number}]}. Extract suggestions only.',
+            '"excerpt": str, "confidence": number from 0.0 to 1.0 inclusive}]}. '
+            "The confidence must be a JSON decimal such as 0.9, never a percentage or "
+            "1-to-10 score. Extract suggestions only.",
             text,
         )
         if not isinstance(result, dict) or not isinstance(result.get("findings"), list):

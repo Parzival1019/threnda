@@ -30,7 +30,7 @@ customer data, credentials, or internal hostnames.
 
 ### What to expect
 
-Threnda is in early development and maintained by a very small team, so please
+Threnda is maintained by a very small team, so please
 allow for a slower response than a funded project would give. We will confirm
 receipt, keep you updated while we work on a fix, and credit you when the fix
 ships unless you ask us not to.
@@ -42,11 +42,10 @@ publicly.
 
 | Version | Supported |
 | ------- | --------- |
-| _none yet_ | — |
+| `0.1.x` | ✅ |
 
-Threnda is **pre-alpha** and has had no release. There are no supported
-versions, and no security fixes are backported. This table will be filled in
-at the first release.
+Security fixes are provided for the latest `0.1.x` Community release. Older
+pre-release commits and development snapshots are unsupported.
 
 ## Security philosophy
 

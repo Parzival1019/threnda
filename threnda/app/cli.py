@@ -127,7 +127,7 @@ def bootstrap_admin() -> int:
 def ai_install(bundle: str | None = None) -> int:
     from threnda.app.services.ai.embedded import EmbeddedAIError, install_embedded_ai
 
-    print("Installing Threnda Local AI (about 4.7 GB; this can take several minutes)…")
+    print("Installing Threnda Local AI (about 1.2 GB; this can take several minutes)…")
     try:
         status = install_embedded_ai(get_settings(), bundle_dir=Path(bundle) if bundle else None)
     except EmbeddedAIError as exc:
@@ -155,6 +155,21 @@ def ai_status() -> int:
     return 0
 
 
+def ai_bundle(output: str, source: str | None = None) -> int:
+    from threnda.app.services.ai.embedded import EmbeddedAIError, build_offline_bundle
+
+    print("Building a verified offline Local AI bundle…")
+    try:
+        result = build_offline_bundle(
+            Path(output), source_dir=Path(source).expanduser() if source else None
+        )
+    except EmbeddedAIError as exc:
+        print(f"Local AI bundle failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Offline Local AI bundle ready: {result}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="threnda")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -172,6 +187,13 @@ def main(argv: list[str] | None = None) -> None:
         help="Read verified artifacts from an offline bundle directory instead of downloading.",
     )
     ai_subparsers.add_parser("status", help="Show local-AI installation and runtime status.")
+    bundle_parser = ai_subparsers.add_parser(
+        "bundle", help="Build a verified platform-specific offline AI bundle."
+    )
+    bundle_parser.add_argument("--output", required=True, help="Directory to create or update.")
+    bundle_parser.add_argument(
+        "--source", help="Optional directory containing already-downloaded verified artifacts."
+    )
     args = parser.parse_args(argv)
 
     if args.command == "bootstrap-admin":
@@ -181,6 +203,8 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(ai_install(args.bundle))
         if args.ai_command == "status":
             raise SystemExit(ai_status())
+        if args.ai_command == "bundle":
+            raise SystemExit(ai_bundle(args.output, args.source))
 
 
 if __name__ == "__main__":

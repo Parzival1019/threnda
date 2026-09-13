@@ -1,17 +1,16 @@
 [project]
 name = "threnda"
-version = "0.0.0"
+version = "0.1.0"
 description = "Private, self-hosted security finding management. Every finding. One queue."
 readme = "README.md"
 requires-python = ">=3.12"
 # License selection is pending before the first public release.
 # Do not add a license classifier or a LICENSE file until it is decided.
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Information Technology",
     "Programming Language :: Python :: 3.12",
     "Topic :: Security",
-    "Private :: Do Not Upload",
 ]
 dependencies = [
     "fastapi>=0.115",
@@ -22,7 +21,7 @@ dependencies = [
     "pydantic-settings>=2.3",
     "python-multipart>=0.0.9",
     "jinja2>=3.1",
-    "pypdf>=4.0,<6",
+    "pypdf>=6.16.1,<7",
     "argon2-cffi>=23.1",
     "cryptography>=42.0",
     "httpx>=0.27",
@@ -44,6 +43,11 @@ postgres = [
 
 [project.scripts]
 threnda = "threnda.app.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Parzival1019/threnda"
+Documentation = "https://github.com/Parzival1019/threnda/tree/main/docs"
+Issues = "https://github.com/Parzival1019/threnda/issues"
 
 [build-system]
 requires = ["hatchling"]

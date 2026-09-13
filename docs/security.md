@@ -1,7 +1,7 @@
 # Security model
 
 This document describes Threnda Community's actual, implemented security
-controls as of Milestone 7. It is not a claim of independent security audit,
+controls as of Milestone 8 / v0.1.0. It is not a claim of independent security audit,
 and it does not describe planned Enterprise capabilities (SSO/SAML/OIDC/SCIM,
 advanced RBAC, enterprise auditing) — see [roadmap.md](roadmap.md) and
 CLAUDE.md for that boundary.
@@ -260,3 +260,13 @@ fresh clone works with the shipped `.env.example` defaults.
 - Not hardened against a malicious co-located process on the same host —
   Threnda assumes normal OS-level file/process isolation, the same as any
   self-hosted application.
+
+## Release security verification
+
+The v0.1.0 release-candidate gate includes `pip-audit`, a high-severity Bandit
+scan, the full test suite and a fixable high/critical vulnerability scan of the
+final container image. This is automated evidence about the checked revision,
+not a substitute for an independent penetration test or source review. The
+Local AI runtime and model are revision-pinned, size-checked and SHA-256 checked
+before installation; the runtime listens on loopback only, and all model output
+remains untrusted advisory data subject to schema validation and human review.

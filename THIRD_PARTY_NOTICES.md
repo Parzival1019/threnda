@@ -12,10 +12,10 @@ licensed components. These notices do not grant a license to Threnda itself.
 The official runtime package includes its license file, which Threnda retains
 inside the managed runtime directory.
 
-## Qwen2.5 7B Instruct GGUF
+## Qwen2.5 1.5B Instruct GGUF
 
-- Project: <https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF>
-- Pinned revision: `bb5d59e06d9551d752d08b292a50eb208b07ab1f`
+- Project: <https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF>
+- Pinned revision: `91cad51170dc346986eccefdc2dd33a9da36ead9`
 - Quantization: Q4_K_M
 - License: Apache License 2.0
 

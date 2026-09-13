@@ -367,6 +367,7 @@ def test_extract_findings_from_text_caps_at_one_hundred_candidates() -> None:
         {"title": "", "excerpt": "x" * 30, "confidence": 0.5},
         {"title": "ok", "excerpt": "   ", "confidence": 0.5},
         {"title": "ok", "excerpt": "x" * 30, "confidence": 1.5},
+        {"title": "ok", "excerpt": "x" * 30, "confidence": 9},
         {"title": "ok", "excerpt": "x" * 30, "confidence": "not-a-number"},
         {"title": 123, "excerpt": "x" * 30, "confidence": 0.5},
         "not-a-dict",

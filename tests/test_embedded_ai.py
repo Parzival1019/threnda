@@ -63,6 +63,36 @@ def test_install_from_offline_bundle_verifies_and_extracts_everything(tmp_path: 
     assert '"stage": "ready"' in paths.state.read_text(encoding="utf-8")
 
 
+def test_build_offline_bundle_copies_verified_artifacts_and_writes_manifest(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    runtime_path = source / "runtime.tar.gz"
+    model_path = source / "model.gguf"
+    _runtime_archive(runtime_path)
+    model_path.write_bytes(b"GGUF" + b"synthetic-model-data")
+    runtime = _artifact(runtime_path)
+    model = _artifact(model_path)
+    output = tmp_path / "release-bundle"
+
+    with (
+        patch.dict(embedded._RUNTIME_ARTIFACTS, {("TestOS", "testarch"): runtime}, clear=True),
+        patch.object(embedded, "_MODEL_ARTIFACTS", (model,)),
+        patch("threnda.app.services.ai.embedded.platform.system", return_value="TestOS"),
+        patch("threnda.app.services.ai.embedded.platform.machine", return_value="testarch"),
+    ):
+        result = embedded.build_offline_bundle(output, source_dir=source)
+
+    assert result == output.resolve()
+    assert (output / runtime.filename).read_bytes() == runtime_path.read_bytes()
+    assert (output / model.filename).read_bytes() == model_path.read_bytes()
+    manifest = (output / "manifest.json").read_text(encoding="utf-8")
+    assert '"schema_version": 1' in manifest
+    assert runtime.sha256 in manifest
+    assert model.sha256 in manifest
+
+
 def test_install_rejects_a_tampered_offline_artifact(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     bundle.mkdir()

@@ -1,8 +1,7 @@
 # Contributing to Threnda
 
-Threnda is in **early development / pre-alpha**. The architecture is still
-moving, so please open an issue to discuss anything substantial before you
-write it.
+Threnda Community is an early-stage project. Please open an issue to discuss
+anything substantial before you write it.
 
 ## Clean-room requirement
 

@@ -39,7 +39,7 @@ Local AI is optional and does not require a separate Ollama installation.
 After signing in as an admin, open **Settings → Local AI** and click
 **Install Local AI**. Threnda downloads and checksum-verifies its pinned
 llama.cpp runtime and Qwen model into the existing `threnda-app-data` volume.
-The download is approximately 4.7 GB and survives normal container upgrades.
+The download is approximately 1.2 GB and survives normal container upgrades.
 
 For non-interactive or air-gapped setup, see `docs/local-ai.md` and
 `threnda ai install --bundle`. On macOS, running Threnda natively gives the
@@ -161,3 +161,12 @@ Before tagging a Community release:
       verified status — not aspirational status.
 - [ ] No secret, real hostname, or non-synthetic data anywhere in the diff
       (`demo-data/` included).
+
+### v0.1.0 release-candidate record
+
+The checklist above was exercised on 2026-09-13 using only synthetic data.
+The full Python quality gate, migration round trip, PostgreSQL Docker workflow,
+real HTTP import/export smoke test, native Local AI test and Linux-container
+Local AI test passed. The final tag and publication remain blocked until the
+project owner selects the Community source-code license; production hostname,
+TLS and secrets remain deployment-specific operator inputs.
