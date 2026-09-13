@@ -10,24 +10,30 @@ actually work through.
 
 > **Status: early development / pre-alpha.**
 > Milestones 1 (project foundation), 2 (ingestion), 3 (deduplication and
-> exposures), 4 (workflow and risk scoring) and 5 (web UI) are implemented
-> and pending owner review: domain models, SQLite persistence with Alembic
-> migrations, workspace/source provisioning, CSV/JSON/SARIF file upload,
-> layered deduplication/correlation with a manual-review queue for
-> uncertain matches, an import differential engine
+> exposures), 4 (workflow and risk scoring), 5 (web UI) and 6 (pentest
+> ingestion, optional local AI) are implemented and pending owner review:
+> domain models, SQLite persistence with Alembic migrations,
+> workspace/source provisioning, CSV/JSON/SARIF/structured-pentest-JSON file
+> upload, local (no-cloud, no-OCR) PDF/TXT/Markdown pentest report
+> extraction with a mandatory-human-review candidate-finding queue,
+> optional local Ollama AI assistance (disabled by default, zero network
+> calls when disabled), layered deduplication/correlation with a
+> manual-review queue for uncertain matches, an import differential engine
 > (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED), server-enforced exposure
 > lifecycle transitions, a deterministic explainable risk score (0-100), a
 > local-development REST API, and a server-rendered Jinja2 + HTMX UI
 > (findings queue with risk filtering, exposure detail with a score
-> breakdown, imports, sources, review queue, dashboard) all exist and are
-> tested. There is still no authentication (Milestone 7) — the web UI's
-> workspace selection and CSRF protection are both plain browsing
-> conveniences, not access control. See
+> breakdown, imports, sources, document review, review queue, dashboard)
+> all exist and are tested. There is still no authentication (Milestone 7)
+> — the web UI's workspace selection and CSRF protection are both plain
+> browsing conveniences, not access control. See
 > [docs/implementation-plan.md](docs/implementation-plan.md) for exact
 > scope and known limitations, [docs/risk-scoring.md](docs/risk-scoring.md)
-> for the scoring engine, and
-> [docs/deduplication.md](docs/deduplication.md) for the correlation/
-> differential design. Do not deploy this, and do not treat anything below
+> for the scoring engine, [docs/deduplication.md](docs/deduplication.md)
+> for the correlation/differential design, and
+> [docs/pentest-and-ai.md](docs/pentest-and-ai.md) /
+> [docs/local-ai.md](docs/local-ai.md) for the pentest ingestion and
+> optional AI provider. Do not deploy this, and do not treat anything below
 > as a description of finished, production-ready functionality.
 
 ## Local development
@@ -66,8 +72,8 @@ synthetic samples in `demo-data/`.
 
 Through the HTTP API directly — create a workspace and a source, then upload
 one of the synthetic samples in `demo-data/` — see
-[docs/importers.md](docs/importers.md) for the full CSV/JSON/SARIF reference
-and every endpoint's exact contract:
+[docs/importers.md](docs/importers.md) for the full CSV/JSON/SARIF/pentest-JSON
+reference and every endpoint's exact contract:
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/workspaces \
@@ -81,6 +87,29 @@ curl -s -X POST "localhost:8080/api/v1/sources?workspace_id=$WORKSPACE_ID" \
 curl -s -X POST "localhost:8080/api/v1/imports?workspace_id=$WORKSPACE_ID" \
   -F "source_id=$SOURCE_ID" \
   -F "file=@demo-data/json/synthetic-findings.json;type=application/json"
+```
+
+### Reviewing a synthetic pentest PDF/text report
+
+A source with `source_type: pentest_report` accepts either structured JSON
+(via `/api/v1/imports`, same as above) or a PDF/TXT/Markdown file (via
+`/api/v1/documents`), extracted locally with every result requiring an
+explicit human accept before it becomes a finding — see
+[docs/pentest-and-ai.md](docs/pentest-and-ai.md):
+
+```bash
+curl -s -X POST "localhost:8080/api/v1/sources?workspace_id=$WORKSPACE_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "demo-pentest", "source_type": "pentest_report"}'
+# -> note the returned "id" as SOURCE_ID
+
+curl -s -X POST "localhost:8080/api/v1/documents?workspace_id=$WORKSPACE_ID" \
+  -F "source_id=$SOURCE_ID" \
+  -F "file=@demo-data/documents/synthetic-pentest-report.txt;type=text/plain"
+# -> inspect the returned "candidates"; note one "id" as CANDIDATE_ID
+
+curl -s -X POST "localhost:8080/api/v1/documents/candidates/$CANDIDATE_ID/accept?workspace_id=$WORKSPACE_ID" \
+  -H "Content-Type: application/json" -d '{"severity": "high"}'
 ```
 
 ## Vision

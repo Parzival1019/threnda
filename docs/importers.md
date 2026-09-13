@@ -1,8 +1,11 @@
 # Importers
 
-Status: Milestone 2. Supported formats: **CSV**, **generic JSON**, **SARIF
-2.1.0**. Everything here is synthetic-data tested; see `demo-data/` for
-working examples of every format this document describes.
+Status: Milestones 2 and 6. Supported formats: **CSV**, **generic JSON**,
+**SARIF 2.1.0**, and **structured pentest report JSON**. Everything here is
+synthetic-data tested; see `demo-data/` for working examples of every format
+this document describes. Unstructured PDF/text pentest reports are a
+separate, local-only extraction path — see `docs/pentest-and-ai.md`, not
+this document.
 
 ## Architecture
 
@@ -30,10 +33,10 @@ POST /api/v1/workspaces               {"name": "..."}
 POST /api/v1/sources?workspace_id=<id> {"name": "...", "source_type": "csv"}
 ```
 
-`source_type` is one of `csv`, `json` or `sarif` for anything Community can
-currently import (see `threnda/app/models/enums.py` for the full
-vendor-neutral list — the others exist for future milestones and are
-rejected by the upload endpoint today, with a `422` naming what is
+`source_type` is one of `csv`, `json`, `sarif` or `pentest_report` for
+anything Community can currently import (see `threnda/app/models/enums.py`
+for the full vendor-neutral list — the others exist for future milestones
+and are rejected by the upload endpoint today, with a `422` naming what is
 supported).
 
 ## Uploading a file
@@ -215,6 +218,64 @@ Example: `demo-data/sarif/synthetic-scan.sarif.json` — two runs, explicit
 and rule-default severity, `ruleIndex` lookup, a `partialFingerprints`
 entry, a help link, and a `pass`-kind result to show it's excluded.
 
+## Pentest report JSON
+
+Threnda's own structured shape for a pentest report that already exists as
+JSON — deliberately a different top-level shape from generic JSON (a
+`"report"` object and a plural `"affected_assets"` array, not a singular
+`"asset"`), so `detect()` cleanly rejects a generic-JSON-shaped upload
+instead of silently reinterpreting it:
+
+```json
+{
+  "report": {"title": "Synthetic Web App Pentest — Q1 2026"},
+  "findings": [
+    {
+      "id": "PENTEST-001",
+      "title": "SQL Injection in login form",
+      "severity": "high",
+      "cvss": 8.1,
+      "cve": "CVE-2024-12345",
+      "affected_assets": [
+        {"key": "host:app01.example.test", "name": "app01.example.test", "type": "host"}
+      ],
+      "description": "...",
+      "steps_to_reproduce": "...",
+      "evidence": "...",
+      "remediation": "...",
+      "exploit_evidence": true,
+      "references": ["https://example.test/advisory"]
+    }
+  ]
+}
+```
+
+- `title` is required. Either `severity` or `cvss` is required, exactly like
+  generic JSON.
+- **Fan-out**: one `NormalizedFinding` is produced *per affected asset*, with
+  `source_finding_id = f"{id}::{asset_key}"` — a pentest finding routinely
+  affects several hosts, and each asset-specific instance gets independent,
+  idempotent identity through the same Milestone 3 differential/correlation
+  engine every other importer uses. Re-importing the same report produces
+  `UNCHANGED`, not duplicates. A finding with no `affected_assets` given
+  produces a single `NormalizedFinding` keyed on the bare `id`.
+- `steps_to_reproduce` (a field with no equivalent `Finding` column) is
+  folded into `evidence`, labelled, rather than adding a pentest-specific
+  column.
+- `report.title` is validated (must be a string, if present) but not
+  persisted anywhere new.
+- `affected_assets[].type` falls back to `unknown` for an unrecognized type,
+  exactly like generic JSON's `asset.type`.
+
+Example: `demo-data/pentest/synthetic-pentest-report.json` — a fan-out
+finding across two hosts, a single-asset finding, and a CVSS-only finding
+with no explicit severity label.
+
+Uploading an *unstructured* PDF/TXT/Markdown pentest report — one that
+isn't already this JSON shape — is a different, local-only flow requiring
+human review of every extracted candidate before it becomes a `Finding`;
+see `docs/pentest-and-ai.md`.
+
 ## Deliberately out of scope for Milestone 2
 
 - Cross-import deduplication and the differential engine (`NEW` /
@@ -229,5 +290,6 @@ entry, a help link, and a `pass`-kind result to show it's excluded.
   and source, and uploading files, is done through the documented HTTP API
   (see `README.md` and the OpenAPI docs at `/docs`), not a web form.
 - Trivy, Nuclei, Semgrep and vendor (Qualys, Tenable, …) importers — the
-  `Importer` interface is designed for them, but only CSV/JSON/SARIF ship
-  in Community v0.1.
+  `Importer` interface is designed for them, but only CSV/JSON/SARIF shipped
+  at Milestone 2 (structured pentest report JSON was added in Milestone 6 —
+  see "Pentest report JSON" above).

@@ -778,7 +778,7 @@ Acceptance criteria:
 
 ## Milestone 6 — pentest ingestion, optional local AI
 
-**Status: not started**
+**Status: done (implementation), pending owner review**
 
 Scope: structured pentest JSON import, deterministic local PDF/text
 extraction and candidate-finding framework, `AIProvider` abstraction with
@@ -786,24 +786,78 @@ extraction and candidate-finding framework, `AIProvider` abstraction with
 
 Acceptance criteria:
 
-- [ ] Structured pentest JSON importer.
-- [ ] Local, deterministic PDF/text extraction with section detection and a
-      candidate-finding extraction framework; no external OCR or AI API
-      calls; manual conversion of candidates to findings works with AI
-      disabled.
-- [ ] `AIProvider` interface: `summarize_finding`, `explain_finding`,
+- [x] Structured pentest JSON importer
+      (`threnda/app/services/ingestion/pentest_importer.py`) — its own
+      top-level shape (`report` + `affected_assets`), one
+      `NormalizedFinding` per affected asset (fan-out), idempotent through
+      the existing Milestone 3 differential engine. See
+      `docs/importers.md`, "Pentest report JSON".
+- [x] Local, deterministic PDF/text extraction
+      (`threnda/app/services/documents/extraction.py`) with section
+      detection (`threnda/app/services/documents/section_detection.py`) and
+      a candidate-finding review framework
+      (`threnda/app/models/document.py`, `threnda/app/models/candidate_finding.py`,
+      `threnda/app/services/documents/processing.py`,
+      `threnda/app/services/documents/review.py`); no external OCR or AI
+      API calls; manual accept/reject of candidates works identically with
+      AI disabled. See `docs/pentest-and-ai.md`.
+- [x] `AIProvider` interface: `summarize_finding`, `explain_finding`,
       `suggest_remediation`, `extract_findings_from_text`,
-      `compare_findings`.
-- [ ] `DisabledAIProvider` (default) and `OllamaAIProvider`
-      (`THRENDA_AI_PROVIDER=ollama`, `THRENDA_AI_MODEL=<model>`), calling a
-      local Ollama instance only — no cloud LLM calls anywhere in the
-      application. Threnda continues functioning normally if Ollama is
-      unreachable.
-- [ ] AI output is visibly marked as machine-generated and never silently
-      modifies a security record.
-- [ ] Tests: pentest JSON import, PDF text extraction on a synthetic sample,
-      `DisabledAIProvider` behaviour, `OllamaAIProvider` against a mocked
-      HTTP layer (no real Ollama dependency in CI).
+      `compare_findings` (`threnda/app/services/ai/provider.py`).
+- [x] `DisabledAIProvider` (default, verified zero-I/O) and
+      `OllamaAIProvider` (`THRENDA_AI_PROVIDER=ollama`,
+      `THRENDA_AI_MODEL=<model>`, `THRENDA_AI_BASE_URL` restricted to
+      loopback), calling a local Ollama instance only — no cloud LLM calls
+      anywhere in the application. Threnda continues functioning normally
+      (heuristic candidates unaffected) if Ollama is unreachable or
+      misconfigured. See `docs/local-ai.md`.
+- [x] AI output is visibly marked as machine-generated
+      (`CandidateFinding.ai_assisted`/`ai_model`, the "AI GENERATED" badge
+      in the web UI) and never silently modifies a security record — every
+      AI-derived candidate still requires the same explicit human accept
+      action as a heuristic one.
+- [x] Tests: pentest JSON import (fan-out, idempotency, per-record errors,
+      duplicate identity), PDF/TXT extraction (malformed, truncated,
+      encrypted with both an empty and a real user password, image-only,
+      oversized), prompt-injection-style text treated as inert data end to
+      end, `DisabledAIProvider` zero-I/O behaviour, `OllamaAIProvider`
+      against a fully mocked HTTP layer (no real Ollama dependency
+      anywhere), document-hash idempotency, manual accept/reject with
+      immutable decisions and cross-workspace denial, and a dedicated
+      regression test that accepting one candidate never resolves an
+      unrelated finding on the same source — see
+      `tests/test_importer_pentest.py`, `tests/test_documents_extraction.py`,
+      `tests/test_documents_section_detection.py`,
+      `tests/test_documents_processing.py`,
+      `tests/test_service_documents_review.py`, `tests/test_ai_provider.py`,
+      `tests/test_api_documents.py`, `tests/test_web_documents.py`.
+
+### Design decisions made in this milestone
+
+- **The AI provider is only ever constructed when `use_ai=True`.** The
+  initial draft called `build_ai_provider(settings)` unconditionally on
+  every document upload; a misconfigured `THRENDA_AI_MODEL` with
+  `THRENDA_AI_PROVIDER=ollama` would then break *every* upload, including
+  ones that never asked for AI. Fixed by deferring construction into
+  `process_document`'s `use_ai` branch
+  (`threnda/app/services/documents/processing.py::_resolve_ai_provider`),
+  and by having `build_ai_provider` itself wrap a construction-time
+  `ValueError` as `AIUnavailableError` — the same exception type every
+  other "no AI this time" condition already uses.
+- **`accept_candidate` calls `persist_parsed_import(..., infer_resolved=False)`.**
+  The default differential-engine behaviour infers `RESOLVED` for every
+  active finding on a source that a run didn't mention — correct for a
+  real re-upload, but accepting a single candidate is not a re-upload of
+  the whole source; it would otherwise silently resolve every other active
+  finding already on that source.
+- **`Document`/`CandidateFinding` follow the exact same workspace-scoped
+  composite-FK pattern as every Milestone 1–4 table** (see
+  `threnda/app/models/document.py`, `candidate_finding.py`) — no new
+  cross-cutting pattern was introduced for this milestone.
+- **The web sidebar's "Documents" nav count shows pending candidates, not
+  total documents** (mirroring "Review"'s pending-possible-duplicate
+  count) — the actionable number, not an inventory count; total document
+  count is still shown on the `/documents` page itself.
 
 ## Milestone 7 — authentication, hardening, packaging, docs
 

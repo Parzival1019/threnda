@@ -161,10 +161,11 @@ the project as MIT, Apache, GPL or anything else until the owner decides.
 ## Current state
 
 Milestones 1 (project foundation), 2 (ingestion), 3 (deduplication and
-exposures), 4 (workflow and risk scoring) and 5 (web UI) are implemented
-and pending owner review: app factory/configuration, SQLAlchemy 2 models
-for the full domain (Workspace, Source, ImportRun, Asset, Finding,
-Exposure, ExposureHistory, PossibleDuplicate) with workspace-scoped
+exposures), 4 (workflow and risk scoring), 5 (web UI) and 6 (pentest
+ingestion, optional local AI) are implemented and pending owner review:
+app factory/configuration, SQLAlchemy 2 models for the full domain
+(Workspace, Source, ImportRun, Asset, Finding, Exposure, ExposureHistory,
+PossibleDuplicate, Document, CandidateFinding) with workspace-scoped
 composite foreign keys and DB-enforced enums, SQLite persistence with
 foreign keys enforced, Alembic migrations verified with upgrade/downgrade
 round trips, Pydantic v2 schemas, and a local-development API:
@@ -173,25 +174,33 @@ creation), `/api/v1/exposures` (incl. `PATCH`, server-enforced lifecycle
 transitions, and a risk-score breakdown on the detail route),
 `/api/v1/imports` (incl. file upload), `/api/v1/assets` (incl. `PATCH`
 for the two manual risk-scoring fields), `/api/v1/possible-duplicates`
-(list/merge/keep-separate). CSV, generic JSON and SARIF 2.1.0 file uploads
-work end to end through the real HTTP API and run through a layered
-deduplication/correlation engine plus an import differential engine
-(NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED). A deterministic, explainable,
-rule-based risk-scoring engine (`threnda/app/services/risk_scoring.py`,
-no AI) scores every exposure 0-100 from severity/CVSS/asset
-environment/internet exposure/exploit evidence/business
-criticality/finding age. A server-rendered Jinja2 + HTMX web UI
+(list/merge/keep-separate), `/api/v1/documents` (incl. file upload and
+candidate accept/reject). CSV, generic JSON, SARIF 2.1.0 and structured
+pentest-report JSON file uploads work end to end through the real HTTP
+API and run through a layered deduplication/correlation engine plus an
+import differential engine (NEW/UNCHANGED/UPDATED/RESOLVED/REOPENED). A
+deterministic, explainable, rule-based risk-scoring engine
+(`threnda/app/services/risk_scoring.py`, no AI) scores every exposure
+0-100 from severity/CVSS/asset environment/internet exposure/exploit
+evidence/business criticality/finding age. Local, fully offline PDF/TXT/
+Markdown pentest report extraction (`threnda/app/services/documents/`, no
+OCR, no network calls) proposes candidate findings that always require an
+explicit human accept/reject decision before becoming a real finding —
+optionally assisted by a local Ollama instance
+(`threnda/app/services/ai/`), disabled by default and making zero network
+calls when disabled. A server-rendered Jinja2 + HTMX web UI
 (`threnda/app/web/`) covers the findings queue (with risk-score
 filtering) with its exposure detail panel (including a Risk tab), imports
-(including a CSV column-mapping wizard), sources, the possible-duplicate
-review queue, and a minimal dashboard, with CSRF protection
-(double-submit cookie) on every state-changing form. See
-docs/implementation-plan.md for exact scope, decisions and known
-limitations, docs/importers.md for the ingestion contract,
-docs/deduplication.md for the correlation/differential design, and
-docs/risk-scoring.md for the scoring engine.
+(including a CSV column-mapping wizard), sources, document upload and
+candidate review, the possible-duplicate review queue, and a minimal
+dashboard, with CSRF protection (double-submit cookie) on every
+state-changing form. See docs/implementation-plan.md for exact scope,
+decisions and known limitations, docs/importers.md for the ingestion
+contract, docs/deduplication.md for the correlation/differential design,
+docs/risk-scoring.md for the scoring engine, and docs/pentest-and-ai.md /
+docs/local-ai.md for the pentest ingestion and optional AI provider.
 
-There is still no authentication — Milestones 6 and 7 have not started.
-The web UI's workspace selection and CSRF token are both browsing
-conveniences, not access control, until Milestone 7 lands. This is
+There is still no authentication — Milestone 7 has not started. The web
+UI's workspace selection and CSRF token are both browsing conveniences,
+not access control, until Milestone 7 lands. This is
 local-development-only; do not deploy it.
