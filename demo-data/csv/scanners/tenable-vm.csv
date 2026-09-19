@@ -1,0 +1,2 @@
+Finding ID,Asset ID,Plugin ID,Plugin Name,Host,Severity,CVSSv3 Base Score,CVE,CWE,Plugin Description,Solution,Plugin Output
+finding-1001,asset-1001,100001,Synthetic vulnerable service,host.example.test,High,8.1,CVE-2099-1001,CWE-1100,Synthetic service finding,Upgrade the service,Synthetic banner evidence

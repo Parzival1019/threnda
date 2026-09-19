@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Callable
 
-from threnda.app.models.enums import AssetType
+from threnda.app.models.enums import AssetType, SeverityLevel
 from threnda.app.services.ingestion.base import (
     ImportFormatError,
     NormalizedAsset,
@@ -82,7 +83,16 @@ def guess_mapping(headers: list[str]) -> dict[str, str]:
 class CsvImporter:
     format_name = "csv"
 
-    def __init__(self, mapping: dict[str, str]) -> None:
+    def __init__(
+        self,
+        mapping: dict[str, str],
+        *,
+        header_row_index: int = 0,
+        asset_type: AssetType = AssetType.HOST,
+        severity_normalizer: Callable[[str], SeverityLevel | None] | None = None,
+        profile_slug: str | None = None,
+        profile_name: str | None = None,
+    ) -> None:
         unknown_targets = set(mapping.values()) - KNOWN_TARGET_FIELDS
         if unknown_targets:
             raise ValueError(f"Unknown mapping target field(s): {sorted(unknown_targets)}")
@@ -94,7 +104,14 @@ class CsvImporter:
             )
         if "title" not in mapping.values():
             raise ValueError('The mapping must map some column to "title"')
+        if header_row_index < 0:
+            raise ValueError("header_row_index cannot be negative")
         self.mapping = mapping
+        self.header_row_index = header_row_index
+        self.asset_type = asset_type
+        self.severity_normalizer = severity_normalizer
+        self.profile_slug = profile_slug
+        self.profile_name = profile_name
 
     def detect(self, filename: str, content_type: str | None, raw: bytes) -> bool:
         if content_type and "csv" in content_type.lower():
@@ -113,7 +130,8 @@ class CsvImporter:
         except UnicodeDecodeError as exc:
             raise ImportFormatError(f"Not valid UTF-8: {exc}") from exc
 
-        header_row = next(csv.reader(io.StringIO(text)), None)
+        rows = list(csv.reader(io.StringIO(text)))
+        header_row = rows[self.header_row_index] if len(rows) > self.header_row_index else None
         if not header_row:
             raise ImportFormatError("CSV file has no header row")
 
@@ -136,8 +154,12 @@ class CsvImporter:
         findings: list[NormalizedFinding] = []
         errors: list[RowError] = []
         total = 0
-        for index, row in enumerate(csv.DictReader(io.StringIO(text))):
+        for index, cells in enumerate(rows[self.header_row_index + 1 :]):
             total += 1
+            row = {
+                column: cells[position] if position < len(cells) else None
+                for position, column in enumerate(header_row)
+            }
             try:
                 findings.append(self._normalize_row(row))
             except ValueError as exc:
@@ -158,7 +180,12 @@ class CsvImporter:
         if values.get("cvss"):
             cvss_score = parse_cvss_score(values["cvss"])
 
-        severity = normalize_severity_name(values.get("severity"))
+        raw_severity = values.get("severity", "")
+        severity = normalize_severity_name(raw_severity)
+        if severity is None and raw_severity and self.severity_normalizer is not None:
+            normalized = self.severity_normalizer(raw_severity)
+            if normalized is not None:
+                severity = normalized
         if severity is None and cvss_score is not None:
             severity = severity_from_cvss(cvss_score)
         if severity is None:
@@ -168,9 +195,9 @@ class CsvImporter:
         asset_value = values.get("asset")
         if asset_value:
             asset = NormalizedAsset(
-                canonical_key=f"host:{asset_value.lower()}",
+                canonical_key=f"{self.asset_type.value}:{asset_value.lower()}",
                 name=asset_value,
-                asset_type=AssetType.HOST,
+                asset_type=self.asset_type,
             )
 
         cve = values.get("cve") or None

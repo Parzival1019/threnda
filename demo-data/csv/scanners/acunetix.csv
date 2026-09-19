@@ -1,0 +1,2 @@
+Severity,Vulnerability,URL,Parameter,Status,Confidence %,Last Seen,Vulnerability Id,Issue Id,Type
+Critical,SQL injection,https://acunetix.example.test/login,username,Open,100,2099-01-01,vuln-1006,,Web

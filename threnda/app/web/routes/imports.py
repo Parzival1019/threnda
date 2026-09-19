@@ -6,17 +6,13 @@ docs/importers.md). The wizard here reflects that honestly: pick a source
 and a file, upload (which commits immediately), see the result. The one
 extra step is CSV column mapping, needed only because a CSV source with no
 saved mapping yet requires one before ``handle_upload`` can run at all —
-handled by a small htmx round trip (``POST /imports/sniff``) that reads
-just the file's header row server-side (reusing the exact same decode path
-``CsvImporter.parse`` uses) and pre-fills a mapping table with the
-existing ``guess_mapping`` heuristic, rather than duplicating any of that
-parsing logic in client-side JavaScript.
+handled by a small htmx round trip (``POST /imports/sniff``) that checks
+the first few logical CSV rows for a strict scanner profile and otherwise
+pre-fills a generic mapping table with the existing ``guess_mapping``
+heuristic, rather than duplicating parsing logic in client-side JavaScript.
 """
 
 from __future__ import annotations
-
-import csv
-import io
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy import select
@@ -30,6 +26,7 @@ from threnda.app.models.import_run import ImportRun
 from threnda.app.models.source import Source
 from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.ingestion.csv_importer import KNOWN_TARGET_FIELDS, guess_mapping
+from threnda.app.services.ingestion.csv_profiles import detect_csv_profile, find_csv_header
 from threnda.app.services.ingestion.upload import (
     ContentDoesNotMatchFormatError,
     InvalidCsvMappingError,
@@ -57,18 +54,14 @@ UPLOADABLE_SOURCE_TYPES = (
 
 
 def _read_csv_header(raw: bytes) -> list[str] | None:
-    """The header row only — same decode path as ``CsvImporter.parse``.
+    """The detected scanner header, or the first row for a generic CSV.
 
     Returns ``None`` if the file has no header row or isn't valid UTF-8;
     the caller degrades to "no columns detected" rather than erroring,
     since the real validation happens later, in the actual upload.
     """
-    try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return None
-    header_row = next(csv.reader(io.StringIO(text)), None)
-    return [column.strip() for column in header_row] if header_row else None
+    found = find_csv_header(raw)
+    return found[0] if found else None
 
 
 @router.get("")
@@ -150,10 +143,21 @@ async def sniff_csv_header(
         return templates.TemplateResponse(request, "imports/_mapping_fields.html", {"columns": []})
 
     raw = await file.read()
+    profile_match = detect_csv_profile(raw)
+    if profile_match is not None:
+        return templates.TemplateResponse(
+            request,
+            "imports/_mapping_fields.html",
+            {"columns": [], "detected_profile": profile_match.profile.name},
+        )
     headers = _read_csv_header(raw) or []
     guessed = guess_mapping(headers)
     columns = [{"name": h, "guess": guessed.get(h, "")} for h in headers]
-    context = {"columns": columns, "target_fields": sorted(KNOWN_TARGET_FIELDS)}
+    context = {
+        "columns": columns,
+        "target_fields": sorted(KNOWN_TARGET_FIELDS),
+        "detected_profile": None,
+    }
     return templates.TemplateResponse(request, "imports/_mapping_fields.html", context)
 
 
@@ -205,8 +209,8 @@ async def create_import(
     except MissingCsvMappingError as exc:
         raise HTTPException(
             status_code=422,
-            detail="This CSV source has no saved column mapping yet — map at least "
-            'the "title" column.',
+            detail="No built-in scanner profile matched this CSV and this source has no "
+            'saved column mapping yet — map at least the "title" column.',
         ) from exc
     except (
         InvalidCsvMappingError,

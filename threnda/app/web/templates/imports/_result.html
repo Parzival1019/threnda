@@ -8,6 +8,12 @@
   {% if outcome.failed %}
   <div class="error-banner">{{ outcome.failure_detail }}</div>
   {% else %}
+  {% if outcome.csv_profile %}
+  <div class="notice" style="margin-bottom:14px">
+    <span class="dot" aria-hidden="true"></span>
+    <div>Detected and imported as <strong>{{ outcome.csv_profile }}</strong>.</div>
+  </div>
+  {% endif %}
   <div class="stat-grid">
     <div class="stat-tile"><div class="label">New</div><div class="value">{{ outcome.import_run.new_findings }}</div></div>
     <div class="stat-tile"><div class="label">Unchanged</div><div class="value">{{ outcome.import_run.unchanged_findings }}</div></div>

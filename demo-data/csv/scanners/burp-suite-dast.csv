@@ -1,0 +1,2 @@
+Issue type,Origin,Path,Severity,Confidence,Site name,Status,Last seen date
+Cross-site scripting,https://burp.example.test,/search?q=synthetic,High,Certain,burp.example.test,Open,2099-01-01

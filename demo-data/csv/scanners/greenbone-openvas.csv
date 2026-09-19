@@ -1,0 +1,2 @@
+IP,Hostname,Port,Protocol,Severity,NVT Name,Summary,Specific Result,NVT OID,CVEs,Solution
+192.0.2.30,openvas.example.test,443,tcp,8.0,Outdated TLS service,Synthetic TLS finding,Synthetic cipher evidence,1.3.6.1.4.1.25623.1.0.100007,CVE-2099-1007,Disable the synthetic cipher

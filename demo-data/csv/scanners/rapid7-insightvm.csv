@@ -1,0 +1,2 @@
+Asset IP Address,Asset Names,Vulnerability ID,Vulnerability Title,Vulnerability Severity Level,Vulnerability CVSSv3 Score,Vulnerability CVE IDs,Vulnerability Description,Vulnerability Solution,Vulnerability Proof
+192.0.2.20,rapid7.example.test,vuln-1004,Synthetic package vulnerability,9,9.1,CVE-2099-1004,Synthetic package finding,Upgrade the package,Synthetic package proof

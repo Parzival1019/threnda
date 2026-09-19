@@ -47,7 +47,7 @@ supported).
 |---------------|----------|----------------------------------------------------------------------|
 | `source_id`   | yes      | which `Source` (in `workspace_id`) this upload belongs to           |
 | `file`        | yes      | the CSV/JSON/SARIF file                                              |
-| `csv_mapping` | CSV only | JSON object `{"column name": "field"}` — see "CSV mapping" below     |
+| `csv_mapping` | sometimes | CSV column map; optional for a recognized scanner profile — see below |
 
 The format is determined by the **source's** `source_type` (`csv`, `json`
 or `sarif`), not sniffed from the upload — a source is a stable declaration
@@ -103,18 +103,52 @@ returns `404` before anything is read from the upload — no `Finding` or
 
 ## CSV
 
-Requires an explicit column mapping — Threnda does not guess which column
-is the title. Supported target fields: `title` (required), `asset`,
+CSV has two safe paths: a strict built-in scanner profile, or an explicit
+mapping confirmed by the user. Threnda never applies its generic header
+guess silently. Supported target fields: `title` (required), `asset`,
 `severity`, `cvss`, `cve`, `cwe`, `description`, `remediation`, `evidence`.
 Columns not mentioned in the mapping are ignored, not an error.
+
+### Built-in scanner profiles
+
+Threnda recognizes these ten documented exports by a distinctive set of
+headers, maps them automatically, and shows the detected product in the web
+UI. Recognition is case-insensitive and whitespace-tolerant. A file with only
+one or two common columns such as `Title` and `Severity` is deliberately not
+enough to select a vendor profile.
+
+| Profile | Distinctive export | Public format reference |
+|---|---|---|
+| Tenable Vulnerability Management | Findings CSV (`Finding ID`, `Asset ID`, `Plugin ID`, `Plugin Name`) | [Tenable CSV keys](https://docs.tenable.com/vulnerability-management/Content/Explore/export-findings-csv-keys.htm) |
+| Nessus | Classic results CSV (`Plugin ID`, `Risk`, `Host`, `Name`, `Plugin Output`) | [Nessus export](https://docs.tenable.com/nessus/Content/Export.htm) |
+| Qualys VMDR | Host-based scan report (`IP`, `QID`, `Title`, `Vuln Status`, `Type`) | [Qualys saved report](https://docs.qualys.com/en/vm/qweb-all-api/mergedProjects/qapi-rep/reports/download_saved_report.htm) |
+| Rapid7 InsightVM | Custom CSV export (`Asset IP Address`, `Vulnerability ID`, `Vulnerability Title`, `Vulnerability Severity Level`) | [InsightVM export attributes](https://docs.rapid7.com/insightvm/report-templates-and-sections/) |
+| Burp Suite DAST | Issues CSV (`Issue type`, `Origin`, `Path`, `Severity`, `Confidence`) | [Burp issue export](https://portswigger.net/burp/documentation/dast/user-guide/work-with-scan-results/managing-issues) |
+| Acunetix | Vulnerability list (`Vulnerability`, `URL`, `Parameter`, `Confidence %`, `Vulnerability Id`) | [Acunetix vulnerability columns](https://www.acunetix.com/support/docs/managing-and-prioritizing-vulnerabilities/) |
+| Greenbone / OpenVAS | CSV Results (`IP`, `NVT Name`, `NVT OID`, `Specific Result`, `CVEs`) | [Greenbone CSV Results format](https://greenbone.github.io/python-gvm/api/api.html) |
+| GitLab | Vulnerability Report CSV (`Group name`, `Project name`, `Report type`, `Scanner name`, `Vulnerability ID`) | [GitLab vulnerability export](https://docs.gitlab.com/user/application_security/vulnerability_report/) |
+| Checkmarx One | Global CSV Result Report (`Vulnerability Name`, `Severity`, `Project Name`, `Scan ID`, `Scanner`) | [Checkmarx global CSV report](https://docs.checkmarx.com/en/34965-281619-global-csv-result-reports.html) |
+| Snyk | Issues Detail CSV (`PROBLEM ID`, `PROBLEM TITLE`, `PRODUCT NAME`, `ISSUE SEVERITY`) | [Snyk issue column dictionary](https://docs.snyk.io/manage-risk/analytics/reports-tab/issue-columns-dictionary) |
+
+Qualys reports may put report metadata before the real CSV header; the profile
+searches the first 25 logical CSV rows and starts parsing at the detected
+header. Numeric vendor severities are normalized using the vendor's scale for
+Qualys (1–5) and Rapid7 (1–10). Greenbone's numeric `Severity` is treated as a
+CVSS score. All extra source columns remain available in `Finding.raw_data`.
+
+The ten synthetic, non-vendor fixtures in `demo-data/csv/scanners/` exercise
+each profile without copying customer or proprietary scan data.
+
+### Generic mapping fallback
 
 The mapping is provided once (`csv_mapping` on the upload) and then
 **saved on the `Source`** (`Source.meta["csv_mapping"]`) for reuse on
 later uploads to that same source — scoped to that source/workspace by
 construction, since `Source` itself already is. Sending `csv_mapping`
 again on a later upload replaces the saved mapping (an explicit
-correction, not silently merged). Uploading to a CSV source with no saved
-mapping and no `csv_mapping` given is a `422` asking for one.
+correction, not silently merged). An automatically detected profile is also
+saved as `Source.meta["csv_profile"]`. Uploading an unknown CSV to a source
+with no saved mapping and no `csv_mapping` is a `422` asking for a mapping.
 
 Rejected outright (whole-file `ImportFormatError`, not a per-row issue):
 

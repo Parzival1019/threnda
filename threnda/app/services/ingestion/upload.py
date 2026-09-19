@@ -14,6 +14,7 @@ from __future__ import annotations
 import json as jsonlib
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import cast
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,7 @@ from threnda.app.services.ingestion.base import (
     RowError,
 )
 from threnda.app.services.ingestion.csv_importer import CsvImporter
+from threnda.app.services.ingestion.csv_profiles import detect_csv_profile
 from threnda.app.services.ingestion.json_importer import JsonImporter
 from threnda.app.services.ingestion.pentest_importer import PentestImporter
 from threnda.app.services.ingestion.runner import compute_file_hash, persist_parsed_import
@@ -105,9 +107,27 @@ def parse_csv_mapping_json(csv_mapping: str | None) -> dict[str, str] | None:
     return parsed
 
 
-def build_importer(source: Source, csv_mapping: dict[str, str] | None) -> Importer:
+def build_importer(
+    source: Source, csv_mapping: dict[str, str] | None, raw: bytes | None = None
+) -> Importer:
     if source.source_type == SourceType.CSV:
-        mapping = csv_mapping or (source.meta or {}).get("csv_mapping")
+        meta = source.meta or {}
+        mapping = csv_mapping or meta.get("csv_mapping")
+        saved_profile = meta.get("csv_profile")
+        if csv_mapping is None and raw is not None and (saved_profile or not mapping):
+            match = detect_csv_profile(raw)
+            if match is not None and (not saved_profile or match.profile.slug == saved_profile):
+                try:
+                    return CsvImporter(
+                        mapping=match.mapping,
+                        header_row_index=match.header_row_index,
+                        asset_type=match.profile.asset_type,
+                        severity_normalizer=match.profile.normalize_severity,
+                        profile_slug=match.profile.slug,
+                        profile_name=match.profile.name,
+                    )
+                except ValueError as exc:
+                    raise InvalidCsvMappingError(str(exc)) from exc
         if not mapping:
             raise MissingCsvMappingError
         try:
@@ -155,6 +175,7 @@ class UploadOutcome:
     row_errors: list[RowError]
     failed: bool = False
     failure_detail: str | None = None
+    csv_profile: str | None = None
 
 
 def handle_upload(
@@ -180,7 +201,7 @@ def handle_upload(
     conditions the JSON API rejects with a ``422`` *before* ever calling
     this.
     """
-    importer = build_importer(source, csv_mapping)
+    importer = build_importer(source, csv_mapping, raw)
     safe_filename = sanitize_filename(filename)
 
     if not importer.detect(safe_filename, content_type, raw):
@@ -213,9 +234,20 @@ def handle_upload(
             import_run=failed_run, row_errors=[], failed=True, failure_detail=str(exc)
         )
 
-    if csv_mapping is not None and source.source_type == SourceType.CSV:
+    detected_profile = getattr(importer, "profile_slug", None)
+    detected_profile_name = getattr(importer, "profile_name", None)
+    if source.source_type == SourceType.CSV and (csv_mapping is not None or detected_profile):
+        csv_importer = cast(CsvImporter, importer)
         updated_meta = dict(source.meta or {})
-        updated_meta["csv_mapping"] = csv_mapping
+        updated_meta["csv_mapping"] = dict(csv_importer.mapping)
+        if detected_profile:
+            updated_meta["csv_profile"] = detected_profile
+        else:
+            updated_meta.pop("csv_profile", None)
         source.meta = updated_meta
 
-    return UploadOutcome(import_run=import_run, row_errors=list(parsed.errors))
+    return UploadOutcome(
+        import_run=import_run,
+        row_errors=list(parsed.errors),
+        csv_profile=detected_profile_name,
+    )

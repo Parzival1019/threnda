@@ -1,0 +1,2 @@
+Plugin ID,CVE,CVSS v3.0 Base Score,Risk,Host,Protocol,Port,Name,Synopsis,Description,Solution,Plugin Output
+100002,CVE-2099-1002,6.5,Medium,legacy.example.test,tcp,443,Unsupported web server,Synthetic synopsis,Synthetic description,Upgrade the web server,Synthetic version response

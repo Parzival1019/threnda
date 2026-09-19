@@ -14,6 +14,7 @@ actually work through.
 > local AI, and authentication/hardening/packaging) are implemented and
 > pending owner review: domain models, SQLite/PostgreSQL persistence with
 > Alembic migrations, CSV/JSON/SARIF/structured-pentest-JSON file upload,
+> automatic profiles for ten major scanner CSV exports plus a generic mapping wizard,
 > local (no-cloud, no-OCR) PDF/TXT/Markdown pentest report extraction with a
 > mandatory-human-review candidate-finding queue, built-in local AI powered
 > by a Threnda-managed llama.cpp/Qwen bundle (no separate AI application),
@@ -120,7 +121,8 @@ bootstrap), add a source under **Sources**, then **New import** and upload
 one of the synthetic samples in `demo-data/`.
 
 Through the HTTP API directly — log in, create a workspace and a source,
-then upload one of the synthetic samples in `demo-data/` — see
+then upload one of the synthetic samples in `demo-data/` (including ten
+scanner-shaped samples under `demo-data/csv/scanners/`) — see
 [docs/importers.md](docs/importers.md) for the full CSV/JSON/SARIF/pentest-JSON
 reference and every endpoint's exact contract. `-c cookies.txt -b cookies.txt`
 carries the session cookie across requests, the same way a browser would:

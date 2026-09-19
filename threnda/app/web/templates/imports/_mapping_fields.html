@@ -1,4 +1,9 @@
-{% if columns %}
+{% if detected_profile %}
+<div class="notice" style="margin-top:14px">
+  <span class="dot" aria-hidden="true"></span>
+  <div><strong>{{ detected_profile }}</strong> CSV detected. Its documented columns will be mapped automatically.</div>
+</div>
+{% elif columns %}
 <div class="field" style="margin-top:14px">
   <label>Map columns</label>
   <div class="hint">This CSV source has no saved mapping yet — map at least one column to "title" (required).</div>

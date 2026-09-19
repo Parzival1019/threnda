@@ -1,0 +1,2 @@
+Vulnerability Name,Severity,Status,Aging,Project Name,Project ID,Scan ID,Language,Scanner,Detected First,Detected Last,Results Link
+SQL Injection,High,Open,10,synthetic-project,project-1009,scan-1009,Python,SAST,2099-01-01,2099-01-02,https://example.test/results/1009

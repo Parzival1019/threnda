@@ -86,6 +86,26 @@ def test_upload_csv_happy_path(
     }
 
 
+def test_upload_scanner_csv_auto_detects_without_mapping(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_id, source_id = _make_workspace_and_source(db_session, admin_user, SourceType.CSV)
+    content = (DEMO_DATA / "csv" / "scanners" / "rapid7-insightvm.csv").read_bytes()
+
+    response = client.post(
+        "/api/v1/imports",
+        params={"workspace_id": workspace_id},
+        data={"source_id": str(source_id)},
+        files={"file": ("rapid7.csv", content, "text/csv")},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["import_run"]["successful_records"] == 1
+    source = db_session.get(Source, source_id)
+    assert source is not None
+    assert source.meta["csv_profile"] == "rapid7-insightvm"
+
+
 def test_upload_json_happy_path(
     client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:

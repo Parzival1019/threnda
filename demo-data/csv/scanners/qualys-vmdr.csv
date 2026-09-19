@@ -1,0 +1,6 @@
+Asset Group Report
+Generated: 2099-01-01
+Scanner: Synthetic appliance
+
+IP,DNS,QID,Title,Vuln Status,Type,Severity,CVSS3 Base,CVE ID,Threat,Solution,Results
+192.0.2.10,qualys.example.test,100003,Synthetic remote code execution,Active,Vuln,5,9.8,CVE-2099-1003,Synthetic threat,Apply the vendor update,Synthetic detection result

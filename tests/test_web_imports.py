@@ -152,6 +152,37 @@ def test_csv_sniff_prefills_a_mapping_guess(client: TestClient, db_session: Sess
     assert 'value="title" selected' in response.text
 
 
+def test_scanner_csv_is_detected_and_imported_without_manual_mapping(
+    client: TestClient, db_session: Session
+) -> None:
+    workspace_id = bootstrap_workspace(client)
+    source_id = _create_source(client, workspace_id, "web-tenable", "csv")
+    content = (DEMO_DATA / "csv" / "scanners" / "tenable-vm.csv").read_bytes()
+
+    sniff = client.post(
+        "/imports/sniff",
+        data={"source_id": str(source_id)},
+        files={"file": ("tenable.csv", content, "text/csv")},
+        headers={"HX-Request": "true"},
+    )
+    assert sniff.status_code == 200
+    assert "Tenable Vulnerability Management" in sniff.text
+    assert "mapping_column_" not in sniff.text
+
+    form = client.get("/imports/new")
+    token = extract_csrf(form.text)
+    response = client.post(
+        "/imports/new",
+        data={"csrf_token": token, "source_id": str(source_id)},
+        files={"file": ("tenable.csv", content, "text/csv")},
+    )
+
+    assert response.status_code == 200, response.text
+    assert "Tenable Vulnerability Management" in response.text
+    findings = db_session.scalars(select(Finding).where(Finding.workspace_id == workspace_id)).all()
+    assert len(findings) == 1
+
+
 def test_csv_upload_without_mapping_is_rejected(client: TestClient, db_session: Session) -> None:
     workspace_id = bootstrap_workspace(client)
     source_id = _create_source(client, workspace_id, "web-csv-2", "csv")

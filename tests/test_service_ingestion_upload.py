@@ -8,6 +8,7 @@ Milestone 5's web upload route calls it without going through that endpoint.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from sqlalchemy.orm import Session
@@ -27,6 +28,8 @@ CSV_MAPPING = {
     "Host": "asset",
     "Severity": "severity",
 }
+
+DEMO_DATA = Path(__file__).resolve().parents[1] / "demo-data"
 
 
 def _make_workspace_and_source(db: Session, source_type: SourceType) -> tuple[Workspace, Source]:
@@ -92,6 +95,27 @@ def test_handle_upload_csv_without_mapping_raises(db_session: Session) -> None:
             raw=b"Vulnerability,Host,Severity\nSynthetic issue,host.example.test,high\n",
             csv_mapping=None,
         )
+
+
+def test_handle_upload_auto_detects_scanner_csv_and_saves_profile(db_session: Session) -> None:
+    workspace, source = _make_workspace_and_source(db_session, SourceType.CSV)
+    raw = (DEMO_DATA / "csv" / "scanners" / "qualys-vmdr.csv").read_bytes()
+
+    outcome = handle_upload(
+        db_session,
+        workspace_id=workspace.id,
+        source=source,
+        filename="qualys.csv",
+        content_type="text/csv",
+        raw=raw,
+        csv_mapping=None,
+    )
+
+    assert not outcome.failed
+    assert outcome.csv_profile == "Qualys VMDR"
+    assert outcome.import_run.successful_records == 1
+    assert source.meta["csv_profile"] == "qualys-vmdr"
+    assert source.meta["csv_mapping"]["Title"] == "title"
 
 
 def test_handle_upload_csv_with_mapping_persists_mapping_on_source(db_session: Session) -> None:

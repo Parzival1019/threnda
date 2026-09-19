@@ -68,8 +68,8 @@ async def create_import(
         description=(
             "For CSV sources only: a JSON object mapping column names to "
             'fields, e.g. {"Vulnerability": "title", "Host": "asset"}. '
-            "Required the first time a CSV source is used; after that, the "
-            "previously saved mapping is reused unless this overrides it — "
+            "Needed only when no built-in scanner profile is detected. After that, the "
+            "detected or supplied mapping is reused unless this overrides it — "
             "and when given, this value replaces the saved mapping."
         ),
     ),
@@ -101,7 +101,8 @@ async def create_import(
         raise HTTPException(
             status_code=422,
             detail=(
-                "This CSV source has no saved column mapping yet. Provide "
+                "No built-in scanner profile matched this CSV and this source has no "
+                "saved column mapping yet. Provide "
                 '"csv_mapping" (a JSON object of {"column name": "field"}) '
                 "with this upload."
             ),
