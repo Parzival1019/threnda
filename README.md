@@ -40,6 +40,22 @@ actually work through.
 > independently-audited, production-hardened functionality — see
 > [docs/security.md](docs/security.md), "What this is not".
 
+## Choose how to run Threnda Community
+
+Community has one codebase with two deployment modes:
+
+- **Desktop** is the simplest route for one person, evaluation and local
+  work. The macOS app carries its own Python runtime, database and native
+  window; it needs no Docker, terminal or separately installed Ollama.
+- **Server** is for a small team sharing one instance. It uses Docker Compose,
+  PostgreSQL, local accounts and the built-in admin/analyst/viewer roles.
+
+The Desktop bundle is currently a verified Apple Silicon development build,
+not yet a public download: public distribution still requires a product icon,
+Developer ID signing and Apple notarization. See
+[docs/desktop.md](docs/desktop.md) for the implemented behavior and build
+instructions. The Server path below remains fully supported.
+
 ## Docker quick start
 
 Requires Docker and Docker Compose. See [docs/deployment.md](docs/deployment.md)
@@ -212,6 +228,7 @@ tooling). None of it is implemented yet.
 - [docs/exports.md](docs/exports.md) — CSV/JSON export schema
 - [docs/webhooks.md](docs/webhooks.md) — outbound webhook delivery and SSRF defense
 - [docs/deployment.md](docs/deployment.md) — Docker Compose, TLS/reverse proxy, backup/restore, upgrades
+- [docs/desktop.md](docs/desktop.md) — Docker-free macOS app, local data, building and release signing
 - [docs/roadmap.md](docs/roadmap.md) — what's shipped, what's plausible next, what's Enterprise-only
 - [docs/implementation-plan.md](docs/implementation-plan.md) — milestone-by-milestone delivery record
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
@@ -34,6 +33,7 @@ from threnda.app.web.cookies import SESSION_COOKIE_NAME, WORKSPACE_COOKIE_NAME, 
 from threnda.app.web.csrf import get_csrf_token
 from threnda.app.web.errors import NotAuthenticatedError, NoWorkspaceError
 from threnda.app.web.filters import register_filters
+from threnda.app.web.resources import web_resource_dir
 
 
 def merge_query(request: Request, **overrides: str | int | None) -> str:
@@ -53,7 +53,7 @@ def merge_query(request: Request, **overrides: str | int | None) -> str:
     return urlencode(params)
 
 
-TEMPLATES_DIR = Path(__file__).parent / "templates"
+TEMPLATES_DIR = web_resource_dir("templates")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 register_filters(templates.env)
 templates.env.globals["merge_query"] = merge_query

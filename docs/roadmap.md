@@ -29,6 +29,10 @@ Enterprise functionality lives in the separate private
 Nothing here is scheduled. Listed because it was raised during design and
 explicitly deferred, not because it's promised:
 
+- Complete the macOS Desktop distribution gate: final icon, Developer ID
+  signing, notarized DMG, clean-machine testing and published checksums. The
+  native launcher and standalone Apple Silicon `.app` build already exist.
+
 - Additional file-based importers (Trivy, Nuclei, Semgrep) — the
   `Importer` protocol is already designed for this; only the format-specific
   parsing is missing.

@@ -30,7 +30,8 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    return os.environ.get("THRENDA_DATABASE_URL") or get_settings().database_url
+    configured = config.attributes.get("database_url")
+    return os.environ.get("THRENDA_DATABASE_URL") or configured or get_settings().database_url
 
 
 def _render_item(type_: str, obj: Any, autogen_context: AutogenContext) -> str | bool:

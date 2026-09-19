@@ -40,9 +40,19 @@ dev = [
 postgres = [
     "psycopg[binary]>=3.1",
 ]
+desktop = [
+    "keyring>=25.7,<26",
+    "pywebview>=6.2,<7",
+]
+desktop-build = [
+    "keyring>=25.7,<26",
+    "pywebview>=6.2,<7",
+    "py2app>=0.28.10,<0.29",
+]
 
 [project.scripts]
 threnda = "threnda.app.cli:main"
+threnda-desktop = "threnda.app.desktop:main"
 
 [project.urls]
 Homepage = "https://github.com/Parzival1019/threnda"

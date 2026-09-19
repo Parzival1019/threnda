@@ -15,7 +15,6 @@ import os
 import sys
 from pathlib import Path
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import threnda.app.models  # noqa: F401 - registers all mappers on Base
@@ -26,14 +25,13 @@ from threnda.app.core.startup_checks import (
 )
 from threnda.app.db.migration_status import get_database_status
 from threnda.app.db.session import create_engine_from_settings, create_sessionmaker
-from threnda.app.models.enums import WorkspaceRole
-from threnda.app.models.user import User
-from threnda.app.models.workspace import Workspace
 from threnda.app.services.auth import InvalidUsernameError, WeakPasswordError
-from threnda.app.services.memberships import add_member
-from threnda.app.services.user_accounts import UsernameTakenError, create_user
-
-DEFAULT_WORKSPACE_NAME = "Default"
+from threnda.app.services.bootstrap import (
+    InstanceAlreadyInitializedError,
+    create_first_admin,
+    has_accounts,
+)
+from threnda.app.services.user_accounts import UsernameTakenError
 
 
 def _read_credentials() -> tuple[str, str]:
@@ -85,8 +83,19 @@ def bootstrap_admin() -> int:
             )
             return 1
 
-        existing_users = session.execute(select(func.count()).select_from(User)).scalar_one()
-        if existing_users > 0:
+        if has_accounts(session):
+            print(
+                "An account already exists — bootstrap is one-time only. Use an existing "
+                "admin's Settings > Members page to add more accounts.",
+                file=sys.stderr,
+            )
+            return 2
+
+        username, password = _read_credentials()
+
+        try:
+            user, workspace = create_first_admin(session, username, password)
+        except InstanceAlreadyInitializedError:
             print(
                 "An account already exists — bootstrap is one-time only. Use an existing "
                 "admin's Settings > Members page to add more accounts.",
@@ -96,25 +105,10 @@ def bootstrap_admin() -> int:
             # container entrypoint re-runs bootstrap on a restart — not a
             # real failure the way a rejected weak password is.
             return 2
-
-        username, password = _read_credentials()
-
-        try:
-            user = create_user(session, username, password, actor=None)
         except (InvalidUsernameError, WeakPasswordError, UsernameTakenError) as exc:
             print(f"Could not create account: {exc}", file=sys.stderr)
             session.rollback()
             return 1
-
-        workspace = session.execute(
-            select(Workspace).order_by(Workspace.id).limit(1)
-        ).scalar_one_or_none()
-        if workspace is None:
-            workspace = Workspace(name=DEFAULT_WORKSPACE_NAME)
-            session.add(workspace)
-            session.flush()
-
-        add_member(session, workspace, user, WorkspaceRole.ADMIN, actor=user)
         session.commit()
     finally:
         session.close()

@@ -8,6 +8,7 @@ from threnda.app.web.routes import (
     assets,
     auth,
     dashboard,
+    desktop,
     documents,
     exposures,
     imports,
@@ -20,6 +21,7 @@ from threnda.app.web.routes import (
 )
 
 web_router = APIRouter()
+web_router.include_router(desktop.router)
 web_router.include_router(auth.router)
 web_router.include_router(workspaces.router)
 web_router.include_router(settings_routes.router)

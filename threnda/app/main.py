@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -27,9 +26,10 @@ from threnda.app.core.middleware import MaxBodySizeMiddleware, SecurityHeadersMi
 from threnda.app.core.startup_checks import validate_production_readiness
 from threnda.app.db.session import create_engine_from_settings, create_sessionmaker
 from threnda.app.web.errors import register_web_exception_handlers
+from threnda.app.web.resources import web_resource_dir
 from threnda.app.web.router import web_router
 
-STATIC_DIR = Path(__file__).parent / "web" / "static"
+STATIC_DIR = web_resource_dir("static")
 
 DESCRIPTION = (
     "Every finding. One queue.\n\n"
@@ -40,7 +40,9 @@ DESCRIPTION = (
 )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, desktop_setup_token: str | None = None
+) -> FastAPI:
     """Build a Threnda FastAPI application.
 
     Pass an explicit ``settings`` (e.g. pointing at a temporary SQLite file)
@@ -66,6 +68,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = resolved_settings
+    app.state.desktop_mode = desktop_setup_token is not None
+    app.state.desktop_setup_token = desktop_setup_token
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
 

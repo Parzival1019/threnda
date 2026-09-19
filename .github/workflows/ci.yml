@@ -42,3 +42,23 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build production image
         run: docker build --tag threnda:${{ github.sha }} .
+
+  desktop-bundle:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install desktop build dependencies
+        run: python -m pip install -e ".[desktop-build]"
+      - name: Build Apple Silicon app
+        run: packaging/macos/build-app.sh
+      - name: Verify app bundle
+        run: |
+          codesign --verify --deep --strict --verbose=2 dist/Threnda.app
+          file dist/Threnda.app/Contents/MacOS/Threnda | grep arm64
+          test -f dist/Threnda.app/Contents/Resources/alembic.ini
+          test -f dist/Threnda.app/Contents/Resources/templates/desktop/setup.html
+          test -f dist/Threnda.app/Contents/Resources/static/css/app.css

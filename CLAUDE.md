@@ -9,8 +9,9 @@ Guidance for Claude Code sessions working in this repository.
 - **Tagline:** Every finding. One queue.
 - **What it is:** an open-source, self-hosted security finding management and
   exposure management platform.
-- **Status:** early development / pre-alpha. Do not describe unimplemented
-  behaviour as if it works, in code comments, docs, commit messages or the UI.
+- **Status:** Community v0.1 release candidate with Desktop packaging in
+  progress. Do not describe unimplemented or unaudited behaviour as if it
+  works, in code comments, docs, commit messages or the UI.
 
 ## Clean-room rules (permanent, non-negotiable)
 
@@ -70,7 +71,7 @@ concrete, demonstrated reason.
 - PostgreSQL-compatible architecture (no SQLite-only constructs in the schema)
 - Jinja2 + HTMX frontend
 - Minimal JavaScript
-- Docker-first
+- Desktop-first for individual macOS use; Docker Compose for a shared server
 - No Kubernetes requirement for Community
 - Optional local AI only
 - No external LLM requirement
@@ -94,7 +95,8 @@ design failure for Community.
 
 ## Community / Enterprise boundary
 
-This is the intended high-level split. Nothing here is implemented yet.
+This is the intended high-level split. Many Community items below are now
+implemented; check the current-state section before claiming exact behavior.
 
 **Threnda Community will eventually include:**
 
@@ -115,6 +117,8 @@ This is the intended high-level split. Nothing here is implemented yet.
 - local optional AI
 - REST API
 - CSV/JSON export
+- a Docker-free macOS desktop app for individual use
+- a shared Server mode with local accounts and basic workspace roles
 
 **Future commercial (Enterprise) functionality may include:**
 
@@ -242,6 +246,13 @@ Milestone 8 (self-contained Local AI) adds a pinned, checksum-verified
 llama.cpp/Qwen bundle, `threnda ai install`, offline-bundle support, and an
 admin-only Settings page. AI actions remain explicit and advisory, but
 ordinary Community users no longer install or configure Ollama separately.
+
+Milestone 9 is in progress: Community now has a tested macOS Desktop launcher,
+automatic SQLite migrations, Keychain-backed instance secrets, loopback-only
+first-run onboarding, and a locally verified Apple Silicon `.app` build. The
+same codebase remains available as Community Server for small teams. The app is
+not a public binary until it has a product icon, real Developer ID signing,
+Apple notarization and clean-machine verification; see `docs/desktop.md`.
 
 This remains pre-alpha and has not had an independent security review —
 see docs/security.md, "What this is not" — but the web UI and JSON API are

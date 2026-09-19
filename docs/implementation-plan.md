@@ -1242,3 +1242,45 @@ owner-gated.
 - Wheel, source distribution and a checksum-verified macOS arm64 offline Local
   AI bundle are generated as v0.1.0 release assets. Their final checksums are
   regenerated after the release commit.
+
+## Milestone 9 — Community Desktop foundation
+
+Status: implementation complete and locally verified; public distribution
+remains owner- and Apple-credential-gated.
+
+- [x] A macOS-native launcher runs the existing Community application in a
+      persistent WebKit window without Docker or a separately installed
+      Python runtime in the produced bundle.
+- [x] Desktop data lives under `~/Library/Application Support/Threnda`, and
+      its directories are created with user-only permissions.
+- [x] The application instance secret is generated once and stored in macOS
+      Keychain rather than a plaintext `.env` file.
+- [x] SQLite migrations run automatically before the local server starts.
+- [x] First launch uses a loopback-only, one-time setup token to create the
+      owner account and default workspace, then establishes a normal secure
+      application session. Server mode exposes none of the setup routes.
+- [x] The launcher binds only to `127.0.0.1`, suppresses token-bearing access
+      logs and shuts the local server down with the native window.
+- [x] A py2app standalone build produces a validated arm64 `Threnda.app`,
+      with migrations, templates and static files bundled explicitly; the
+      PostgreSQL driver and developer tools are excluded from Desktop.
+- [x] Community Server remains the collaborative path with PostgreSQL, local
+      accounts and admin/analyst/viewer roles. Desktop is positioned for one
+      person, not as an artificial Community user cap.
+- [ ] Supply a final product icon, Developer ID Application signing identity,
+      notarize and staple a DMG, then verify first run on a clean Mac.
+- [ ] Select the source-code license before any public binary or source
+      release.
+
+### Milestone 9 verification
+
+- Full local gate: Ruff lint/format, strict mypy, `pip check`, `pip-audit`,
+  high-severity Bandit and **656 tests** all pass.
+- A real 93 MB arm64 `Threnda.app` was built and passed deep/strict macOS
+  code-signature validation. It launched against an isolated data directory,
+  rendered the first-run form in its native WebKit window, returned healthy
+  database status, served bundled CSS, and stopped its loopback listener when
+  the window closed.
+- The production Docker image was rebuilt after the shared-bootstrap refactor
+  and passed a fresh SQLite migration plus real HTTP health smoke test. This
+  confirms the new Desktop path did not regress Community Server.

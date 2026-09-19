@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Welcome · Threnda</title>
+  <link rel="stylesheet" href="/static/css/tokens.css?v=0.1.0-1">
+  <link rel="stylesheet" href="/static/css/app.css?v=0.1.0-1">
+</head>
+<body>
+<div style="max-width:520px;margin:64px auto;padding:0 20px">
+  <div class="sidebar-brand" style="margin-bottom:24px">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="name" style="font-size:16px">Threnda</span>
+    <span class="edition">community desktop</span>
+  </div>
+  <div class="first-run-card" style="margin:0">
+    <div class="eyebrow">Private by default</div>
+    <h3>Make this Threnda yours</h3>
+    <p>Your database stays on this Mac. Create the local owner account; no cloud
+       account, Docker or terminal is required.</p>
+
+    {% if error %}<div class="error-banner" role="alert">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/desktop/setup" style="margin-top:18px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="desktop-username">Admin username</label>
+        <input id="desktop-username" type="text" name="username" required maxlength="64"
+               autocomplete="username" placeholder="e.g. fabio" autofocus>
+      </div>
+      <div class="field">
+        <label for="desktop-password">Password</label>
+        <input id="desktop-password" type="password" name="password" required maxlength="256"
+               autocomplete="new-password">
+        <div class="hint">At least 12 characters and two character types.</div>
+      </div>
+      <div class="field">
+        <label for="desktop-password-confirm">Confirm password</label>
+        <input id="desktop-password-confirm" type="password" name="password_confirm" required
+               maxlength="256" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary">Open my Threnda</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>
