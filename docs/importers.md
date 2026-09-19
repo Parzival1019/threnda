@@ -111,7 +111,7 @@ Columns not mentioned in the mapping are ignored, not an error.
 
 ### Built-in scanner profiles
 
-Threnda recognizes these ten documented exports by a distinctive set of
+Threnda recognizes these eleven documented exports by a distinctive set of
 headers, maps them automatically, and shows the detected product in the web
 UI. Recognition is case-insensitive and whitespace-tolerant. A file with only
 one or two common columns such as `Title` and `Severity` is deliberately not
@@ -126,6 +126,7 @@ enough to select a vendor profile.
 | Burp Suite DAST | Issues CSV (`Issue type`, `Origin`, `Path`, `Severity`, `Confidence`) | [Burp issue export](https://portswigger.net/burp/documentation/dast/user-guide/work-with-scan-results/managing-issues) |
 | Acunetix | Vulnerability list (`Vulnerability`, `URL`, `Parameter`, `Confidence %`, `Vulnerability Id`) | [Acunetix vulnerability columns](https://www.acunetix.com/support/docs/managing-and-prioritizing-vulnerabilities/) |
 | Greenbone / OpenVAS | CSV Results (`IP`, `NVT Name`, `NVT OID`, `Specific Result`, `CVEs`) | [Greenbone CSV Results format](https://greenbone.github.io/python-gvm/api/api.html) |
+| Red Hat Advanced Cluster Security (RHACS) | Vulnerability report (`Cluster`, `Namespace`, `Deployment`, `Image`, `Component`, `CVE`, `Fixable`) | [RHACS vulnerability reports](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_security_for_kubernetes/4.11/html/operating/managing-vulnerabilities) · [exact open-source CSV schema](https://github.com/stackrox/stackrox/blob/master/central/reports/scheduler/v2/reportgenerator/csv_gen.go) |
 | GitLab | Vulnerability Report CSV (`Group name`, `Project name`, `Report type`, `Scanner name`, `Vulnerability ID`) | [GitLab vulnerability export](https://docs.gitlab.com/user/application_security/vulnerability_report/) |
 | Checkmarx One | Global CSV Result Report (`Vulnerability Name`, `Severity`, `Project Name`, `Scan ID`, `Scanner`) | [Checkmarx global CSV report](https://docs.checkmarx.com/en/34965-281619-global-csv-result-reports.html) |
 | Snyk | Issues Detail CSV (`PROBLEM ID`, `PROBLEM TITLE`, `PRODUCT NAME`, `ISSUE SEVERITY`) | [Snyk issue column dictionary](https://docs.snyk.io/manage-risk/analytics/reports-tab/issue-columns-dictionary) |
@@ -136,7 +137,9 @@ header. Numeric vendor severities are normalized using the vendor's scale for
 Qualys (1–5) and Rapid7 (1–10). Greenbone's numeric `Severity` is treated as a
 CVSS score. All extra source columns remain available in `Finding.raw_data`.
 
-The ten synthetic, non-vendor fixtures in `demo-data/csv/scanners/` exercise
+RHACS has no separate title column, so Threnda uses its `CVE` as both the
+finding title and normalized CVE, and records `Image` as a container-image
+asset. The eleven synthetic, non-vendor fixtures in `demo-data/csv/scanners/` exercise
 each profile without copying customer or proprietary scan data.
 
 ### Generic mapping fallback

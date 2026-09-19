@@ -32,6 +32,7 @@ class CsvScannerProfile:
     fields: Mapping[str, tuple[str, ...]]
     asset_type: AssetType = AssetType.HOST
     severity_scale: SeverityScale = "names"
+    field_copies: tuple[tuple[str, str], ...] = ()
 
     def matches(self, headers: list[str]) -> bool:
         normalized = {_key(header) for header in headers}
@@ -214,6 +215,28 @@ SCANNER_CSV_PROFILES: tuple[CsvScannerProfile, ...] = (
         asset_type=AssetType.IP,
     ),
     CsvScannerProfile(
+        slug="red-hat-acs",
+        name="Red Hat Advanced Cluster Security (RHACS)",
+        documentation_url=(
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_advanced_cluster_security_for_kubernetes/4.11/html/operating/"
+            "managing-vulnerabilities"
+        ),
+        required_headers=frozenset(
+            {"Cluster", "Namespace", "Deployment", "Image", "Component", "CVE", "Fixable"}
+        ),
+        fields=_fields(
+            asset=("Image",),
+            severity=("Severity",),
+            cvss=("CVSS",),
+            cve=("CVE",),
+            remediation=("CVE Fixed In",),
+            evidence=("Component",),
+        ),
+        asset_type=AssetType.CONTAINER_IMAGE,
+        field_copies=(("title", "cve"),),
+    ),
+    CsvScannerProfile(
         slug="gitlab-vulnerability-report",
         name="GitLab Vulnerability Report",
         documentation_url="https://docs.gitlab.com/user/application_security/vulnerability_report/",
@@ -305,7 +328,8 @@ def detect_csv_profile(raw: bytes) -> CsvProfileMatch | None:
         for profile in SCANNER_CSV_PROFILES:
             if profile.matches(headers):
                 mapping = profile.mapping_for(headers)
-                if "title" in mapping.values():
+                copied_targets = {target for target, _source in profile.field_copies}
+                if "title" in mapping.values() or "title" in copied_targets:
                     matches.append(CsvProfileMatch(profile, headers, mapping, row_index))
 
     if not matches:

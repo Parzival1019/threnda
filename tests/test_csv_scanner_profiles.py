@@ -29,6 +29,7 @@ EXPECTED = {
     "nessus": ("Unsupported web server", SeverityLevel.MEDIUM, AssetType.HOST),
     "qualys-vmdr": ("Synthetic remote code execution", SeverityLevel.CRITICAL, AssetType.IP),
     "rapid7-insightvm": ("Synthetic package vulnerability", SeverityLevel.CRITICAL, AssetType.IP),
+    "red-hat-acs": ("CVE-2099-1011", SeverityLevel.CRITICAL, AssetType.CONTAINER_IMAGE),
     "snyk-issues": ("Prototype Pollution", SeverityLevel.HIGH, AssetType.REPOSITORY),
     "tenable-vm": ("Synthetic vulnerable service", SeverityLevel.HIGH, AssetType.HOST),
 }
@@ -40,14 +41,15 @@ def _importer(match: CsvProfileMatch) -> CsvImporter:
         header_row_index=match.header_row_index,
         asset_type=match.profile.asset_type,
         severity_normalizer=match.profile.normalize_severity,
+        field_copies=dict(match.profile.field_copies),
         profile_slug=match.profile.slug,
         profile_name=match.profile.name,
     )
 
 
-def test_exactly_ten_unique_profiles_are_registered() -> None:
-    assert len(SCANNER_CSV_PROFILES) == 10
-    assert len({profile.slug for profile in SCANNER_CSV_PROFILES}) == 10
+def test_exactly_eleven_unique_profiles_are_registered() -> None:
+    assert len(SCANNER_CSV_PROFILES) == 11
+    assert len({profile.slug for profile in SCANNER_CSV_PROFILES}) == 11
     assert set(EXPECTED) == {profile.slug for profile in SCANNER_CSV_PROFILES}
 
 
@@ -69,6 +71,8 @@ def test_profile_detects_and_imports_its_synthetic_export(slug: str) -> None:
     assert finding.asset is not None
     assert finding.asset.asset_type is expected_asset_type
     assert finding.asset.canonical_key.startswith(f"{expected_asset_type.value}:")
+    if slug == "red-hat-acs":
+        assert finding.cve == "CVE-2099-1011"
 
 
 def test_qualys_profile_finds_header_after_report_preamble() -> None:

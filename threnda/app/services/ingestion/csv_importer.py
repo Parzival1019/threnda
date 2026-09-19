@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from threnda.app.models.enums import AssetType, SeverityLevel
 from threnda.app.services.ingestion.base import (
@@ -90,6 +90,7 @@ class CsvImporter:
         header_row_index: int = 0,
         asset_type: AssetType = AssetType.HOST,
         severity_normalizer: Callable[[str], SeverityLevel | None] | None = None,
+        field_copies: Mapping[str, str] | None = None,
         profile_slug: str | None = None,
         profile_name: str | None = None,
     ) -> None:
@@ -102,7 +103,14 @@ class CsvImporter:
             raise ValueError(
                 f"Multiple columns mapped to the same field: {sorted(duplicate_targets)}"
             )
-        if "title" not in mapping.values():
+        copies = dict(field_copies or {})
+        unknown_copy_fields = (set(copies) | set(copies.values())) - KNOWN_TARGET_FIELDS
+        if unknown_copy_fields:
+            raise ValueError(f"Unknown copied field(s): {sorted(unknown_copy_fields)}")
+        available_targets = set(mapping.values())
+        if any(source not in available_targets for source in copies.values()):
+            raise ValueError("Copied fields must reference a mapped target field")
+        if "title" not in available_targets and "title" not in copies:
             raise ValueError('The mapping must map some column to "title"')
         if header_row_index < 0:
             raise ValueError("header_row_index cannot be negative")
@@ -110,6 +118,7 @@ class CsvImporter:
         self.header_row_index = header_row_index
         self.asset_type = asset_type
         self.severity_normalizer = severity_normalizer
+        self.field_copies = copies
         self.profile_slug = profile_slug
         self.profile_name = profile_name
 
@@ -171,6 +180,9 @@ class CsvImporter:
         values: dict[str, str] = {
             target: (row.get(column) or "").strip() for column, target in self.mapping.items()
         }
+        for target, source in self.field_copies.items():
+            if not values.get(target):
+                values[target] = values.get(source, "")
 
         title = values.get("title", "")
         if not title:

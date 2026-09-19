@@ -123,6 +123,7 @@ def build_importer(
                         header_row_index=match.header_row_index,
                         asset_type=match.profile.asset_type,
                         severity_normalizer=match.profile.normalize_severity,
+                        field_copies=dict(match.profile.field_copies),
                         profile_slug=match.profile.slug,
                         profile_name=match.profile.name,
                     )

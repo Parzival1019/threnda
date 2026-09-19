@@ -1,0 +1,2 @@
+Cluster,Namespace,Deployment,Image,Component,Component Version,CVE,Fixable,CVE Fixed In,Severity,CVSS,NVDCVSS,EPSS Probability Percentage,Discovered At,Image Created Date,Reference,Advisory Name,Advisory Link,CVE Origin
+synthetic-cluster,synthetic-namespace,synthetic-api,registry.example.test/synthetic/api:1.0.0,openssl,1.0.0,CVE-2099-1011,true,1.0.1,Critical,9.8,9.8,1.250,"January 01, 2099","December 01, 2098",https://example.test/cve/CVE-2099-1011,RHSA-2099:1011,https://example.test/advisory/RHSA-2099-1011,Red Hat

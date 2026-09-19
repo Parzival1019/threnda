@@ -248,9 +248,10 @@ Acceptance criteria:
       normalization with a CVSS-derived fallback, mapping persisted on
       `Source.meta` and reused automatically on later uploads.
 - [x] Post-milestone CSV profile expansion: strict automatic recognition for
-      ten documented scanner exports (Tenable VM, Nessus, Qualys VMDR,
+      eleven documented scanner exports (Tenable VM, Nessus, Qualys VMDR,
       Rapid7 InsightVM, Burp Suite DAST, Acunetix, Greenbone/OpenVAS, GitLab,
-      Checkmarx One and Snyk), including Qualys preamble handling and one
+      Checkmarx One, Snyk and Red Hat Advanced Cluster Security), including
+      Qualys preamble handling and one
       synthetic fixture/test contract per profile. Unknown CSVs still use the
       generic mapping wizard.
 - [x] Generic JSON importer for a documented Threnda-native finding shape
@@ -345,7 +346,7 @@ Acceptance criteria:
   exists but nothing correlates findings across imports into an `Exposure`
   (Milestone 3).
 - Native Trivy/Nuclei/Semgrep importers are not implemented. Community can
-  ingest the ten documented scanner CSV shapes above and unknown CSVs through
+  ingest the eleven documented scanner CSV shapes above and unknown CSVs through
   explicit mapping, plus generic JSON and SARIF.
 - Pentest report ingestion (structured JSON + PDF text extraction) is
   Milestone 6.

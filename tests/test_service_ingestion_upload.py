@@ -11,9 +11,11 @@ import json
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from threnda.app.models.enums import ImportStatus, SourceType
+from threnda.app.models.enums import AssetType, ImportStatus, SourceType
+from threnda.app.models.finding import Finding
 from threnda.app.models.source import Source
 from threnda.app.models.workspace import Workspace
 from threnda.app.services.ingestion.upload import (
@@ -116,6 +118,30 @@ def test_handle_upload_auto_detects_scanner_csv_and_saves_profile(db_session: Se
     assert outcome.import_run.successful_records == 1
     assert source.meta["csv_profile"] == "qualys-vmdr"
     assert source.meta["csv_mapping"]["Title"] == "title"
+
+
+def test_handle_upload_rhacs_uses_cve_as_title_and_keeps_cve(db_session: Session) -> None:
+    workspace, source = _make_workspace_and_source(db_session, SourceType.CSV)
+    raw = (DEMO_DATA / "csv" / "scanners" / "red-hat-acs.csv").read_bytes()
+
+    outcome = handle_upload(
+        db_session,
+        workspace_id=workspace.id,
+        source=source,
+        filename="rhacs.csv",
+        content_type="text/csv",
+        raw=raw,
+        csv_mapping=None,
+    )
+
+    assert not outcome.failed
+    assert outcome.csv_profile == "Red Hat Advanced Cluster Security (RHACS)"
+    finding = db_session.scalar(select(Finding).where(Finding.workspace_id == workspace.id))
+    assert finding is not None
+    assert finding.title == "CVE-2099-1011"
+    assert finding.cve == "CVE-2099-1011"
+    assert finding.asset is not None
+    assert finding.asset.asset_type is AssetType.CONTAINER_IMAGE
 
 
 def test_handle_upload_csv_with_mapping_persists_mapping_on_source(db_session: Session) -> None:
