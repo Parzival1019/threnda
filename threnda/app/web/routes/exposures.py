@@ -112,7 +112,7 @@ def _filtered_query(
     min_risk: int | None = None,
     max_risk: int | None = None,
     overdue: bool = False,
-) -> Select[tuple[Exposure]]:
+) -> Select[Any]:  # SQLAlchemy 2.0 and 2.1 type Select differently
     stmt = select(Exposure).where(Exposure.workspace_id == workspace_id)
     if overdue:
         stmt = stmt.where(
