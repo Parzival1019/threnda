@@ -17,7 +17,15 @@ from threnda.app.models.workspace import Workspace
 from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.audit import record_audit_event
 
-_ROLE_ORDER = {WorkspaceRole.VIEWER: 0, WorkspaceRole.ANALYST: 1, WorkspaceRole.ADMIN: 2}
+# CLIENT is deliberately the lowest rung: anything gated on ``viewer`` or
+# above (imports, sources, documents, exports, audit, settings, ...) refuses
+# a client-side user without that route having to know clients exist.
+_ROLE_ORDER = {
+    WorkspaceRole.CLIENT: 0,
+    WorkspaceRole.VIEWER: 1,
+    WorkspaceRole.ANALYST: 2,
+    WorkspaceRole.ADMIN: 3,
+}
 
 
 def role_at_least(role: WorkspaceRole, minimum: WorkspaceRole) -> bool:
@@ -27,6 +35,35 @@ def role_at_least(role: WorkspaceRole, minimum: WorkspaceRole) -> bool:
 
 class LastAdminError(ValueError):
     """Raised when an action would leave a workspace with no admin member."""
+
+
+class ClientRoleMismatchError(ValueError):
+    """Raised when a membership would break the client-user binding rules.
+
+    A client-side account (``User.client_id`` set) may only ever hold the
+    ``client`` role, and only on a project of *its own* client; a
+    consultancy account (no ``client_id``) may never hold the ``client``
+    role. Enforced here, the single write path for memberships, so neither
+    the UI nor the API can grant a client user another client's data by
+    mistake — see docs/security.md, "Client users".
+    """
+
+
+def validate_membership_binding(workspace: Workspace, user: User, role: WorkspaceRole) -> None:
+    if user.client_id is not None:
+        if role != WorkspaceRole.CLIENT:
+            raise ClientRoleMismatchError(
+                f"{user.username!r} is a client-side account and can only have the client role."
+            )
+        if workspace.client_id != user.client_id:
+            raise ClientRoleMismatchError(
+                f"{user.username!r} belongs to a different client than this project."
+            )
+    elif role == WorkspaceRole.CLIENT:
+        raise ClientRoleMismatchError(
+            f"{user.username!r} is a consultancy account; the client role is only for "
+            "client-side accounts (invite them as a client user instead)."
+        )
 
 
 def _admin_count(db: Session, workspace_id: int) -> int:
@@ -48,6 +85,7 @@ def add_member(
     *,
     actor: User,
 ) -> WorkspaceMembership:
+    validate_membership_binding(workspace, user, role)
     membership = WorkspaceMembership(workspace_id=workspace.id, user_id=user.id, role=role)
     db.add(membership)
     db.flush()
@@ -76,6 +114,7 @@ def update_member_role(
         and _admin_count(db, membership.workspace_id) <= 1
     ):
         raise LastAdminError("Cannot demote the last admin of a workspace.")
+    validate_membership_binding(membership.workspace, membership.user, role)
     previous_role = membership.role
     membership.role = role
     db.flush()

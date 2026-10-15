@@ -100,9 +100,13 @@ def require_min_role(
     return _dependency
 
 
-# Any workspace member may read; analysts additionally operate
+# ``client`` is the lowest role: only routes that explicitly opt in with
+# ``require_client`` (the client-facing finding/comment/attachment routes)
+# accept a client-side user, and those routes filter out internal-only
+# content themselves. Any workspace staff member may read; analysts additionally operate
 # findings/imports/documents/possible-duplicates/exports; only admins
 # manage membership and webhooks.
+require_client = require_min_role(WorkspaceRole.CLIENT)
 require_viewer = require_min_role(WorkspaceRole.VIEWER)
 require_analyst = require_min_role(WorkspaceRole.ANALYST)
 require_admin = require_min_role(WorkspaceRole.ADMIN)

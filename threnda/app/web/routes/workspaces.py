@@ -8,7 +8,7 @@ Switching between workspaces a user already belongs to is handled by
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
@@ -46,6 +46,8 @@ def create_workspace(
     db: Session = Depends(get_db),
 ) -> Response:
     verify_csrf(request, csrf_token)
+    if not user.is_org_admin:
+        raise HTTPException(status_code=403, detail="Only a consultancy admin can create projects.")
     workspace = Workspace(name=name.strip())
     db.add(workspace)
     try:

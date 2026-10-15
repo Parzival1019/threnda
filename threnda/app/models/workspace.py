@@ -1,8 +1,10 @@
-"""Workspace — the multi-tenancy boundary.
+"""Workspace — the multi-tenancy boundary, shown in the UI as a *project*.
 
-Community Edition is single-user today, but every other table is scoped to
-a workspace from the start so multi-workspace support later does not
-require a schema migration through every table.
+Every other table is scoped to a workspace, and every access check runs
+through ``WorkspaceMembership``. For a consultancy, one workspace is one
+client engagement ("ügyfélprojekt"): ``client_id`` groups it under its
+``Client``. ``client_id`` is nullable so workspaces created before clients
+existed (or a consultancy's own internal workspace) keep working unchanged.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from threnda.app.db.base import Base
@@ -20,6 +22,7 @@ from threnda.app.models.types import UTCDateTime
 if TYPE_CHECKING:
     from threnda.app.models.asset import Asset
     from threnda.app.models.candidate_finding import CandidateFinding
+    from threnda.app.models.client import Client
     from threnda.app.models.document import Document
     from threnda.app.models.exposure import Exposure
     from threnda.app.models.finding import Finding
@@ -35,8 +38,15 @@ class Workspace(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    # RESTRICT (the default): a client that still has projects can't be
+    # deleted out from under them.
+    client_id: Mapped[int | None] = mapped_column(
+        ForeignKey("clients.id"), nullable=True, index=True
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
 
+    client: Mapped[Client | None] = relationship(back_populates="projects")
     sources: Mapped[list[Source]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan"
     )

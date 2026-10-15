@@ -31,7 +31,7 @@ from threnda.app.services.auth import validate_session
 from threnda.app.services.memberships import role_at_least
 from threnda.app.web.cookies import SESSION_COOKIE_NAME, WORKSPACE_COOKIE_NAME, cookie_secure
 from threnda.app.web.csrf import get_csrf_token
-from threnda.app.web.errors import NotAuthenticatedError, NoWorkspaceError
+from threnda.app.web.errors import ClientPortalOnlyError, NotAuthenticatedError, NoWorkspaceError
 from threnda.app.web.filters import register_filters
 from threnda.app.web.resources import web_resource_dir
 
@@ -76,10 +76,14 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 
 def _lookup_membership(db: Session, user_id: int, workspace_id: int) -> WorkspaceMembership | None:
+    """A *consultancy* (non-client) membership — the only kind the
+    consultancy UI ever resolves. Client memberships are served exclusively
+    by ``threnda.app.web.routes.portal``."""
     return db.execute(
         select(WorkspaceMembership).where(
             WorkspaceMembership.workspace_id == workspace_id,
             WorkspaceMembership.user_id == user_id,
+            WorkspaceMembership.role != WorkspaceRole.CLIENT,
         )
     ).scalar_one_or_none()
 
@@ -129,13 +133,32 @@ def get_current_membership(
 
     first_membership = db.execute(
         select(WorkspaceMembership)
-        .where(WorkspaceMembership.user_id == user.id)
+        .where(
+            WorkspaceMembership.user_id == user.id,
+            WorkspaceMembership.role != WorkspaceRole.CLIENT,
+        )
         .order_by(WorkspaceMembership.workspace_id)
         .limit(1)
     ).scalar_one_or_none()
     if first_membership is None:
+        if user.client_id is not None or _has_client_membership(db, user.id):
+            raise ClientPortalOnlyError
         raise NoWorkspaceError
     return first_membership
+
+
+def _has_client_membership(db: Session, user_id: int) -> bool:
+    return (
+        db.execute(
+            select(WorkspaceMembership.id)
+            .where(
+                WorkspaceMembership.user_id == user_id,
+                WorkspaceMembership.role == WorkspaceRole.CLIENT,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        is not None
+    )
 
 
 def get_current_workspace(

@@ -113,6 +113,10 @@ def _create_user(app: FastAPI, username: str, password: str) -> TestUser:
     session = app.state.sessionmaker()
     try:
         user = create_user(session, username, password, actor=None)
+        # Both fixture accounts are consultancy staff allowed to create
+        # their own projects; tests for the non-org-admin refusal create
+        # their own account explicitly.
+        user.is_org_admin = True
         session.commit()
         return TestUser(id=user.id, username=user.username, password=password)
     finally:

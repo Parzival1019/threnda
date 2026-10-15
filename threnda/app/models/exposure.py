@@ -66,6 +66,18 @@ class Exposure(Base):
     acknowledged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     remediation_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     remediation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The affected system as shown to people ("érintett rendszer"). Set from
+    # the asset when an exposure is created by an import or by manual entry,
+    # editable afterwards; the linked findings' assets remain the
+    # machine-level record. See docs/finding-lifecycle.md.
+    #
+    # ``deferred=True`` for the same reason as ``Finding.exploit_evidence``:
+    # migration 32832b96f2c3's backfill selects/inserts through the *current*
+    # ORM class at a point in the upgrade sequence before this column
+    # exists. List views ``undefer()`` it explicitly.
+    affected_system: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, deferred=True
+    )
     first_seen: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)

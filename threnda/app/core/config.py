@@ -99,6 +99,24 @@ class Settings(BaseSettings):
     # the 16 GB target machine.
     max_upload_bytes: int = 20 * 1024 * 1024
 
+    # Evidence attachments (docs/attachments.md). Per-file cap; files are
+    # stored in the database so a normal database backup includes them.
+    attachment_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=20 * 1024 * 1024)
+
+    # One-time invitation links (docs/security.md, "Invitations").
+    invitation_ttl_hours: int = Field(default=72, ge=1, le=24 * 30)
+    # Optional absolute base URL used to build invitation links (e.g.
+    # https://threnda.consultancy.example). Without it the link is built from
+    # the incoming request's host — set it when Threnda runs behind a
+    # reverse proxy that rewrites the Host header.
+    public_base_url: str = ""
+
+    # Demo mode (docs/demo.md): shows a "fictional demo data" banner and
+    # enables `threnda demo reset` / the in-app reset button. The reset
+    # additionally refuses any database that does not carry the demo marker
+    # written by the demo seed, so this flag alone can never wipe real data.
+    demo_mode: bool = False
+
     @field_validator("ai_base_url")
     @classmethod
     def validate_local_ai_url(cls, value: str) -> str:
@@ -114,6 +132,18 @@ class Settings(BaseSettings):
             raise ValueError("ai_base_url must point to localhost")
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("ai_base_url must not contain credentials, query, or fragment")
+        return value.rstrip("/")
+
+    @field_validator("public_base_url")
+    @classmethod
+    def validate_public_base_url(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("public_base_url must be an absolute http(s) URL")
         return value.rstrip("/")
 
     @property

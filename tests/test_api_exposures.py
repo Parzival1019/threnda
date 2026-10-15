@@ -180,16 +180,36 @@ def test_patch_exposure_changes_status_and_records_history(
     assert exposure.history[0].actor == admin_user.username
 
 
-def test_patch_exposure_resolve_sets_resolved_at_and_reopen_clears_it(
+def test_patch_exposure_cannot_resolve_directly(
     client: TestClient, db_session: Session, admin_user: TestUser
 ) -> None:
+    """Verified closure is only reachable through a recorded retest."""
     workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
 
-    resolved = client.patch(
+    response = client.patch(
         f"/api/v1/exposures/{exposure.id}",
         params={"workspace_id": workspace_a.id},
         json={"status": "resolved"},
     )
+    assert response.status_code == 409
+    assert "retest" in response.json()["detail"]
+
+
+def test_passed_retest_resolves_and_reopen_clears_resolved_at(
+    client: TestClient, db_session: Session, admin_user: TestUser
+) -> None:
+    workspace_a, _, exposure = _seed_exposures(db_session, admin_user)
+
+    retest = client.post(
+        f"/api/v1/exposures/{exposure.id}/retest",
+        params={"workspace_id": workspace_a.id},
+        json={"outcome": "passed", "notes": "Re-ran the original payload; now rejected."},
+    )
+    assert retest.status_code == 201, retest.text
+    resolved = client.get(
+        f"/api/v1/exposures/{exposure.id}", params={"workspace_id": workspace_a.id}
+    )
+    assert resolved.json()["status"] == "resolved"
     assert resolved.json()["resolved_at"] is not None
 
     reopened = client.patch(
@@ -201,7 +221,7 @@ def test_patch_exposure_resolve_sets_resolved_at_and_reopen_clears_it(
 
     db_session.refresh(exposure)
     event_types = [h.event_type.value for h in exposure.history]
-    assert event_types == ["resolved", "reopened"]
+    assert event_types == ["retest_passed", "reopened"]
 
 
 def test_patch_exposure_owner_and_note_and_target_date(

@@ -22,6 +22,7 @@ from threnda.app.services.ai import AIUnavailableError, EmbeddedAIProvider
 from threnda.app.services.ai.embedded import embedded_ai_status, start_embedded_ai_install
 from threnda.app.services.auth import InvalidUsernameError, WeakPasswordError, normalize_username
 from threnda.app.services.memberships import (
+    ClientRoleMismatchError,
     LastAdminError,
     add_member,
     remove_member,
@@ -120,6 +121,9 @@ def add_member_form(
     try:
         add_member(db, membership.workspace, user, resolved_role, actor=membership.user)
         db.flush()
+    except ClientRoleMismatchError as exc:
+        db.rollback()
+        return _members_error(request, db, membership, str(exc))
     except IntegrityError:
         db.rollback()
         return _members_error(
