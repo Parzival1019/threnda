@@ -53,6 +53,25 @@
     }
   });
 
+  // Print button on the status report, and "copy" for one-time invitation
+  // links — delegated so no inline handlers are needed (strict CSP).
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!target.closest) return;
+    if (target.closest("[data-print]")) {
+      window.print();
+    }
+    var copyButton = target.closest("[data-copy-target]");
+    if (copyButton) {
+      var source = document.getElementById(copyButton.getAttribute("data-copy-target"));
+      if (source && navigator.clipboard) {
+        navigator.clipboard.writeText(source.textContent.trim()).then(function () {
+          copyButton.textContent = "Copied";
+        });
+      }
+    }
+  });
+
   document.addEventListener("change", function (event) {
     if (event.target.matches && event.target.matches("[data-auto-submit]")) {
       var autoSubmitForm = event.target.closest("form");

@@ -221,6 +221,23 @@ def build_shell_context(
     document_count = db.execute(
         select(func.count()).select_from(Document).where(Document.workspace_id == workspace.id)
     ).scalar_one()
+    retest_count = db.execute(
+        select(func.count())
+        .select_from(Exposure)
+        .where(
+            Exposure.workspace_id == workspace.id,
+            Exposure.status == ExposureStatus.FIX_REPORTED,
+        )
+    ).scalar_one()
+    switchable = db.execute(
+        select(Workspace)
+        .join(WorkspaceMembership, WorkspaceMembership.workspace_id == Workspace.id)
+        .where(
+            WorkspaceMembership.user_id == membership.user_id,
+            WorkspaceMembership.role != WorkspaceRole.CLIENT,
+        )
+        .order_by(Workspace.name)
+    ).scalars()
     candidate_count = db.execute(
         select(func.count())
         .select_from(CandidateFinding)
@@ -237,6 +254,11 @@ def build_shell_context(
         "current_role": membership.role,
         "is_admin": role_at_least(membership.role, WorkspaceRole.ADMIN),
         "is_analyst": role_at_least(membership.role, WorkspaceRole.ANALYST),
+        "is_org_admin": membership.user.is_org_admin,
+        "demo_mode": request.app.state.settings.demo_mode,
+        "project_client": workspace.client,
+        "switchable_projects": list(switchable),
+        "nav_retest_count": retest_count,
         "nav_open_count": open_count,
         "nav_review_count": review_count,
         "nav_source_count": source_count,

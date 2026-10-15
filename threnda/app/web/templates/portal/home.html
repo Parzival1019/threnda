@@ -1,0 +1,15 @@
+{% extends "portal/_layout.html" %}
+{% block title %}My projects{% endblock %}
+{% block content %}
+<div class="page-header"><h2>My projects</h2></div>
+<table class="data-table">
+  <thead><tr><th>Project</th><th class="num">Open</th><th class="num">Critical open</th><th class="num">Overdue</th><th class="num">Awaiting retest</th><th class="num">Verified closed</th></tr></thead>
+  <tbody>
+  {% for p in stats %}
+    <tr><td><a href="/portal/projects/{{ p.workspace.id }}">{{ p.workspace.name }}</a></td>
+      <td class="num">{{ p.active }}</td><td class="num {{ 'bad' if p.critical_active else '' }}">{{ p.critical_active }}</td>
+      <td class="num {{ 'warn' if p.overdue else '' }}">{{ p.overdue }}</td><td class="num">{{ p.awaiting_retest }}</td><td class="num">{{ p.verified_closed }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

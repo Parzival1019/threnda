@@ -28,7 +28,10 @@ class NotAuthenticatedError(Exception):
 def register_web_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(NoWorkspaceError)
     async def _no_workspace(_request: Request, _exc: NoWorkspaceError) -> RedirectResponse:
-        return RedirectResponse(url="/workspaces/new", status_code=302)
+        # The all-projects overview explains what to do next: a consultancy
+        # admin can create a client and project there; anyone else is told
+        # they are not a member of a project yet.
+        return RedirectResponse(url="/overview", status_code=302)
 
     @app.exception_handler(ClientPortalOnlyError)
     async def _client_portal(_request: Request, _exc: ClientPortalOnlyError) -> RedirectResponse:

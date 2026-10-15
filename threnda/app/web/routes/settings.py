@@ -13,14 +13,24 @@ from sqlalchemy.orm import Session, joinedload
 from starlette.responses import RedirectResponse, Response
 
 from threnda.app.api.deps import get_db
+from threnda.app.api.v1.projects import invite_base_url
 from threnda.app.models.audit_log import AuditLogEntry
 from threnda.app.models.enums import WorkspaceRole
 from threnda.app.models.user import User
+from threnda.app.models.user_invitation import UserInvitation
 from threnda.app.models.webhook_endpoint import WebhookEndpoint
 from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.ai import AIUnavailableError, EmbeddedAIProvider
 from threnda.app.services.ai.embedded import embedded_ai_status, start_embedded_ai_install
 from threnda.app.services.auth import InvalidUsernameError, WeakPasswordError, normalize_username
+from threnda.app.services.demo import DemoResetRefusedError, reset_demo_data
+from threnda.app.services.invitations import (
+    InvitationError,
+    IssuedInvitation,
+    create_invitation,
+    pending_invitations,
+    revoke_invitation,
+)
 from threnda.app.services.memberships import (
     ClientRoleMismatchError,
     LastAdminError,
@@ -36,6 +46,7 @@ from threnda.app.services.webhooks import (
     deliver_webhook,
     set_webhook_enabled,
 )
+from threnda.app.web.cookies import SESSION_COOKIE_NAME
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
 from threnda.app.web.deps import build_shell_context, require_admin, templates
 
@@ -51,12 +62,14 @@ def settings_index(
     return RedirectResponse(url="/settings/members", status_code=302)
 
 
-@router.get("/members")
-def members_page(
+def _render_members(
     request: Request,
+    db: Session,
+    membership: WorkspaceMembership,
+    *,
     error: str | None = None,
-    membership: WorkspaceMembership = Depends(require_admin),
-    db: Session = Depends(get_db),
+    issued: IssuedInvitation | None = None,
+    status_code: int = 200,
 ) -> Response:
     members = (
         db.execute(
@@ -78,11 +91,91 @@ def members_page(
             "roles": list(WorkspaceRole),
             "error": error,
             "csrf_token": token,
+            "invitations": pending_invitations(db, membership.workspace_id),
+            "issued": issued,
+            "issued_url": (f"{invite_base_url(request)}/invite/{issued.token}" if issued else None),
+            "invitation_ttl_hours": request.app.state.settings.invitation_ttl_hours,
             **build_shell_context(request, db, membership.workspace, membership),
         },
+        status_code=status_code,
     )
     apply_csrf_cookie(request, response, token)
     return response
+
+
+@router.post("/invitations")
+def create_invitation_form(
+    request: Request,
+    csrf_token: str = Form(...),
+    username: str = Form(...),
+    role: str = Form(...),
+    membership: WorkspaceMembership = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    try:
+        issued = create_invitation(
+            db,
+            membership.workspace,
+            username=username,
+            role=WorkspaceRole(role),
+            actor=membership.user,
+            ttl_hours=request.app.state.settings.invitation_ttl_hours,
+        )
+    except (ValueError, InvitationError, InvalidUsernameError) as exc:
+        db.rollback()
+        return _render_members(request, db, membership, error=str(exc), status_code=422)
+    # Rendered directly (not a redirect): the link exists only in this
+    # response and is never stored or shown again.
+    return _render_members(request, db, membership, issued=issued)
+
+
+@router.post("/invitations/{invitation_id}/revoke")
+def revoke_invitation_form(
+    request: Request,
+    invitation_id: int,
+    csrf_token: str = Form(...),
+    membership: WorkspaceMembership = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    invitation = db.get(UserInvitation, invitation_id)
+    if invitation is None or invitation.workspace_id != membership.workspace_id:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    revoke_invitation(db, invitation, actor=membership.user)
+    return RedirectResponse(
+        url=f"/settings/members?workspace_id={membership.workspace_id}", status_code=303
+    )
+
+
+@router.post("/demo-reset")
+def demo_reset_form(
+    request: Request,
+    csrf_token: str = Form(...),
+    membership: WorkspaceMembership = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    settings = request.app.state.settings
+    if not settings.demo_mode or not membership.user.is_org_admin:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        reset_demo_data(db, actor_username=membership.user.username)
+    except DemoResetRefusedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return response
+
+
+@router.get("/members")
+def members_page(
+    request: Request,
+    error: str | None = None,
+    membership: WorkspaceMembership = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    return _render_members(request, db, membership, error=error)
 
 
 @router.post("/members")
@@ -117,6 +210,10 @@ def add_member_form(
         except (InvalidUsernameError, WeakPasswordError, UsernameTakenError) as exc:
             db.rollback()
             return _members_error(request, db, membership, str(exc))
+        if resolved_role == WorkspaceRole.CLIENT:
+            # A brand-new account created directly as a client user belongs
+            # to this project's client (same rule as an accepted invitation).
+            user.client_id = membership.workspace.client_id
 
     try:
         add_member(db, membership.workspace, user, resolved_role, actor=membership.user)
@@ -137,32 +234,7 @@ def add_member_form(
 def _members_error(
     request: Request, db: Session, membership: WorkspaceMembership, error: str
 ) -> Response:
-    members = (
-        db.execute(
-            select(WorkspaceMembership)
-            .where(WorkspaceMembership.workspace_id == membership.workspace_id)
-            .options(joinedload(WorkspaceMembership.user))
-            .order_by(WorkspaceMembership.id)
-        )
-        .scalars()
-        .all()
-    )
-    token = get_csrf_token(request)
-    response = templates.TemplateResponse(
-        request,
-        "settings/members.html",
-        {
-            "active_nav": "settings",
-            "members": members,
-            "roles": list(WorkspaceRole),
-            "error": error,
-            "csrf_token": token,
-            **build_shell_context(request, db, membership.workspace, membership),
-        },
-        status_code=422,
-    )
-    apply_csrf_cookie(request, response, token)
-    return response
+    return _render_members(request, db, membership, error=error, status_code=422)
 
 
 @router.post("/members/{user_id}/role")

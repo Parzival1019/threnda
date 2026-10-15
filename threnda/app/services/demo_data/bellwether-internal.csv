@@ -1,0 +1,5 @@
+id,title,severity,affected_system,description,remediation,owner,due_date,cvss,cve,cwe
+BD-01,SMB signing not required on file server,medium,198.51.100.10,"The file server accepts unsigned SMB sessions, enabling relay attacks.","Require SMB signing via group policy.",IT operations,{later},5.9,,CWE-300
+BD-02,Unsupported operating system on reception workstation,high,198.51.100.42,"Workstation runs an operating system version without security updates.","Upgrade or isolate the workstation.",IT operations,{soon},7.5,,CWE-1104
+BD-03,LLMNR and NBT-NS enabled on client network,medium,client VLAN,"Name resolution poisoning captured password hashes during the test.","Disable LLMNR and NBT-NS by group policy.",IT operations,{later},5.4,,CWE-300
+BD-04,Weak password policy in directory service,medium,directory.bellwether-dental.example,"Minimum password length is 6 with no complexity requirement.","Enforce a 12+ character minimum and screen against breached passwords.",IT operations,{later},5.0,,CWE-521

@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+{% block title %}Import findings CSV{% endblock %}
+{% block page_title %}Import findings CSV{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Import pentest findings from CSV</h2>
+  <p>One row per finding. The whole file is checked first — if any row has a problem, nothing is imported
+     and you get the full list of problems to fix.</p>
+</div>
+
+{% if result and result.problems %}
+<div class="error-banner" role="alert">{{ filename }}: {{ result.problems | length }} problem{{ '' if result.problems|length == 1 else 's' }} found — nothing was imported. Fix them and upload the file again.</div>
+<table class="data-table" style="margin:12px 0 20px">
+  <thead><tr><th class="num">Line</th><th>Column</th><th>Problem</th></tr></thead>
+  <tbody>
+  {% for p in result.problems %}
+    <tr><td class="num">{{ p.line }}</td><td class="mono">{{ p.column or "—" }}</td><td>{{ p.message }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% elif result and result.ok %}
+<div class="callout success" role="status" style="margin-bottom:16px">
+  <strong>{{ filename }} imported</strong> — {{ result.total_rows }} row{{ '' if result.total_rows == 1 else 's' }}:
+  {{ result.new }} new, {{ result.updated }} updated, {{ result.unchanged }} unchanged{% if result.reopened %}, {{ result.reopened }} back in the report{% endif %}{% if result.not_in_this_import %}, {{ result.not_in_this_import }} previously imported finding{{ '' if result.not_in_this_import == 1 else 's' }} not in this file (left in their current status){% endif %}.
+  <div style="margin-top:8px"><a class="btn btn-secondary" href="/exposures?workspace_id={{ workspace.id }}">Open the findings</a></div>
+</div>
+{% endif %}
+
+<div class="two-col">
+  <form method="post" enctype="multipart/form-data" action="/findings-import?workspace_id={{ workspace.id }}" class="inline-form card" style="padding:14px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="section-label">Upload</div>
+    <label class="sr-only" for="csv-file">CSV file</label>
+    <input id="csv-file" type="file" name="file" accept=".csv,text/csv" required>
+    <div class="row-actions">
+      <button type="submit" class="btn btn-primary">Validate and import</button>
+      <a class="btn btn-secondary" href="/findings-import/template.csv">Download template</a>
+    </div>
+  </form>
+  <div class="card" style="padding:14px;font-size:12.5px;line-height:1.55">
+    <div class="section-label">Columns</div>
+    <p class="mono" style="font-size:11px">{{ columns | join(", ") }}</p>
+    <p><strong>Required:</strong> title, severity (critical, high, medium, low, info).
+       <strong>Dates:</strong> YYYY-MM-DD. Save as <em>CSV UTF-8</em>.</p>
+    <div class="section-label" style="margin-top:10px">Re-importing</div>
+    <ul style="padding-left:18px;margin:6px 0">
+      <li>Rows with the same <span class="mono">id</span> update the existing finding — no duplicates.</li>
+      <li>Without an id, a row is matched on title + affected system + CVE.</li>
+      <li>Owner and due date are only filled in when still empty here; your edits are never overwritten.</li>
+      <li>An import never closes anything. A finding missing from a new file stays in its status — only a retest closes it.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

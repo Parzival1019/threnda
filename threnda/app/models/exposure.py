@@ -75,9 +75,7 @@ class Exposure(Base):
     # migration 32832b96f2c3's backfill selects/inserts through the *current*
     # ORM class at a point in the upgrade sequence before this column
     # exists. List views ``undefer()`` it explicitly.
-    affected_system: Mapped[str | None] = mapped_column(
-        String(500), nullable=True, deferred=True
-    )
+    affected_system: Mapped[str | None] = mapped_column(String(500), nullable=True, deferred=True)
     first_seen: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)

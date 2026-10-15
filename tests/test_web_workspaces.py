@@ -6,10 +6,15 @@ from fastapi.testclient import TestClient
 from webhelpers import bootstrap_workspace, extract_csrf
 
 
-def test_root_redirects_to_onboarding_when_no_workspace_exists(client: TestClient) -> None:
+def test_root_redirects_to_overview_when_no_workspace_exists(client: TestClient) -> None:
+    """The all-projects overview is the onboarding page now: it tells a
+    consultancy admin to create a client and project there."""
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 302
-    assert response.headers["location"] == "/workspaces/new"
+    assert response.headers["location"] == "/overview"
+    overview = client.get("/overview")
+    assert overview.status_code == 200
+    assert "Create a client and a project" in overview.text
 
 
 def test_creating_a_workspace_sets_cookie_and_redirects_home(client: TestClient) -> None:

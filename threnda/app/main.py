@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from threnda.app import __version__
 from threnda.app.api.v1.router import api_router
 from threnda.app.core.config import Settings, get_settings
+from threnda.app.core.log_redaction import install_access_log_redaction
 from threnda.app.core.middleware import MaxBodySizeMiddleware, SecurityHeadersMiddleware
 from threnda.app.core.startup_checks import validate_production_readiness
 from threnda.app.db.session import create_engine_from_settings, create_sessionmaker
@@ -51,6 +52,7 @@ def create_app(
     """
     resolved_settings = settings or get_settings()
     validate_production_readiness(resolved_settings)
+    install_access_log_redaction()
     engine = create_engine_from_settings(resolved_settings)
 
     @asynccontextmanager

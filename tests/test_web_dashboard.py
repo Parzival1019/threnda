@@ -18,7 +18,7 @@ def test_dashboard_renders_with_zero_data(client: TestClient) -> None:
     bootstrap_workspace(client)
     response = client.get("/")
     assert response.status_code == 200
-    assert "Overview" in response.text
+    assert "Awaiting retest" in response.text
 
 
 def test_dashboard_counts_reflect_real_data(client: TestClient, db_session: Session) -> None:

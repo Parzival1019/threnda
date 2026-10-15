@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from threnda.app.api.deps import get_db, require_admin
+from threnda.app.models.enums import WorkspaceRole
 from threnda.app.models.user import User
 from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.schemas.membership import MemberAdd, MemberRoleUpdate, MembershipRead
@@ -77,6 +78,8 @@ def add_workspace_member(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except UsernameTakenError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if payload.role == WorkspaceRole.CLIENT:
+            user.client_id = membership.workspace.client_id
 
     try:
         new_membership = add_member(

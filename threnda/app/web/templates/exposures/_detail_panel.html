@@ -2,22 +2,22 @@
   <div class="row1">
     <span class="sev-icon {{ exposure.severity | severity_class }}"><span class="shape" aria-hidden="true"></span></span>
     <span class="mono" style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary)">{{ exposure.severity.value }}</span>
-    <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status.value.replace('_', ' ') }}</span>
+    <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status | status_label }}</span>
     <span class="risk-value {{ exposure.risk_score | risk_class }}" title="Risk score">{{ risk_result.total }}</span>
     <a data-close class="btn btn-ghost" style="margin-left:auto"
        hx-get="/exposures/panel/close?workspace_id={{ workspace.id }}"
        hx-target="#detail-panel" hx-swap="innerHTML" aria-label="Close detail panel">esc</a>
   </div>
-  <div class="ref mono">EXP-{{ exposure.id }}</div>
+  <div class="ref mono">EXP-{{ exposure.id }}{% if exposure.affected_system %} · {{ exposure.affected_system }}{% endif %}{% if exposure.owner %} · owner: {{ exposure.owner }}{% endif %}{% if exposure.remediation_target_date %} · due {{ exposure.remediation_target_date.isoformat() }}{% if exposure.remediation_target_date < today and exposure.status.value in ['open','acknowledged','in_progress','fix_reported'] %} <span style="color:var(--critical)">(overdue)</span>{% endif %}{% endif %}</div>
   <div class="title">{{ exposure.title }}</div>
 </div>
 
 <div class="panel-tabs">
-  {% for t in ["evidence", "identity", "risk", "timeline", "remediation"] %}
+  {% for t, label in panel_tabs %}
   <a class="panel-tab" aria-current="{{ 'true' if tab == t else 'false' }}"
      hx-get="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}&tab={{ t }}"
      hx-target="#detail-panel" hx-swap="innerHTML"
-     href="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}&tab={{ t }}">{{ t | capitalize }}</a>
+     href="/exposures/{{ exposure.id }}/panel?workspace_id={{ workspace.id }}&tab={{ t }}">{{ label }}{% if t == 'discussion' and (comments|length + attachments|length) %} ({{ comments|length + attachments|length }}){% endif %}</a>
   {% endfor %}
 </div>
 
@@ -25,7 +25,124 @@
   {% if error %}
   <div class="error-banner" role="alert">{{ error }}</div>
   {% endif %}
-  {% if tab == "evidence" %}
+  {% if notice %}
+  <div class="callout success" role="status">{{ notice }}</div>
+  {% endif %}
+  {% if tab == "details" %}
+    {% if can_write %}
+    <form method="post" action="/exposures/{{ exposure.id }}/details?workspace_id={{ workspace.id }}"
+          hx-post="/exposures/{{ exposure.id }}/details?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML"
+          class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field"><label for="d-title">Title</label>
+        <input id="d-title" type="text" name="title" value="{{ exposure.title }}" maxlength="500" required></div>
+      <div class="field-row" style="display:flex;gap:8px">
+        <div class="field" style="flex:1"><label for="d-sev">Severity</label>
+          <select id="d-sev" name="severity">
+            {% for sv in severities %}<option value="{{ sv.value }}" {% if exposure.severity == sv %}selected{% endif %}>{{ sv.value }}</option>{% endfor %}
+          </select></div>
+        <div class="field" style="flex:2"><label for="d-sys">Affected system</label>
+          <input id="d-sys" type="text" name="affected_system" value="{{ exposure.affected_system or '' }}" maxlength="500"></div>
+      </div>
+      <div class="field"><label for="d-desc">Description</label>
+        <textarea id="d-desc" name="description" rows="6">{{ exposure.description or '' }}</textarea></div>
+      <div class="row-actions"><button type="submit" class="btn btn-secondary">Save details</button>
+        <span class="mono" style="font-size:10.5px;color:var(--text-muted)">every change is recorded in the timeline</span></div>
+    </form>
+    {% else %}
+    <div><div class="section-label">Affected system</div><div class="prose">{{ exposure.affected_system or "—" }}</div></div>
+    <div><div class="section-label">Description</div><div class="prose">{{ exposure.description or "—" }}</div></div>
+    {% endif %}
+    <div><div class="section-label">Remediation recommendation</div>
+      <div class="prose" style="margin-top:6px">{{ exposure.remediation or "—" }}</div>
+      <div class="mono" style="font-size:10.5px;color:var(--text-muted);margin-top:4px">edit on the Workflow tab</div></div>
+
+  {% elif tab == "discussion" %}
+    <div>
+      <div class="section-label">Comments</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        {% for c in comments %}
+        <div class="comment {{ 'internal' if c.is_internal else '' }}">
+          <div class="meta"><span>{{ c.author_username }}</span><span>{{ c.created_at | humanize_dt }}</span>{% if c.is_internal %}<span style="color:var(--high)">internal — hidden from client</span>{% else %}<span>visible to client</span>{% endif %}</div>
+          <div class="body">{{ c.body }}</div>
+        </div>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:12px">No comments yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+    {% if can_write %}
+    <form method="post" action="/exposures/{{ exposure.id }}/comments?workspace_id={{ workspace.id }}"
+          hx-post="/exposures/{{ exposure.id }}/comments?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="sr-only" for="c-body">Comment</label>
+      <textarea id="c-body" name="body" rows="3" maxlength="10000" placeholder="Write a comment…" required></textarea>
+      <div class="row-actions">
+        <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="internal" value="true"> Internal (hidden from the client)</label>
+        <button type="submit" class="btn btn-secondary">Post comment</button>
+      </div>
+    </form>
+    {% endif %}
+    <div>
+      <div class="section-label">Evidence files</div>
+      <div class="card" style="margin-top:8px">
+        {% for a in attachments %}
+        <div class="card-row">
+          <span class="k" style="width:auto;flex:1"><a href="/api/v1/attachments/{{ a.id }}/download?workspace_id={{ workspace.id }}">{{ a.filename }}</a></span>
+          <span class="v mono" style="font-size:10.5px">{{ a.size_bytes | filesize }} · {{ a.uploaded_by_username }} · {{ a.created_at | humanize_dt }}{% if a.is_internal %} · <span style="color:var(--high)">internal</span>{% endif %}</span>
+        </div>
+        {% else %}
+        <div class="card-row"><span class="k" style="width:auto;color:var(--text-muted)">No files attached.</span></div>
+        {% endfor %}
+      </div>
+    </div>
+    {% if can_write %}
+    <form method="post" enctype="multipart/form-data" action="/exposures/{{ exposure.id }}/attachments?workspace_id={{ workspace.id }}"
+          hx-post="/exposures/{{ exposure.id }}/attachments?workspace_id={{ workspace.id }}" hx-encoding="multipart/form-data" hx-target="#detail-panel" hx-swap="innerHTML" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="sr-only" for="a-file">Evidence file</label>
+      <input id="a-file" type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.pdf,.txt,.log,.md,.csv,.json">
+      <div class="row-actions">
+        <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="internal" value="true"> Internal</label>
+        <button type="submit" class="btn btn-secondary">Upload</button>
+        <span class="mono" style="font-size:10.5px;color:var(--text-muted)">PNG, JPG, GIF, PDF, TXT, LOG, MD, CSV, JSON · max {{ max_attachment_bytes | filesize }}</span>
+      </div>
+    </form>
+    {% endif %}
+
+  {% elif tab == "retest" %}
+    {% if exposure.status.value == 'fix_reported' %}
+    <div class="callout">The client marked this finding as fixed. Retest it, then record the result below.</div>
+    {% elif exposure.status.value == 'resolved' %}
+    <div class="callout success">Verified closed{% if exposure.resolved_at %} on {{ exposure.resolved_at | humanize_dt }}{% endif %}. A failed retest reopens it.</div>
+    {% endif %}
+    {% if can_write %}
+    <form method="post" action="/exposures/{{ exposure.id }}/retest?workspace_id={{ workspace.id }}"
+          hx-post="/exposures/{{ exposure.id }}/retest?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="r-notes" class="section-label">Retest notes (visible to the client)</label>
+      <textarea id="r-notes" name="notes" rows="3" maxlength="10000" placeholder="What did you test, and what did you observe?"></textarea>
+      <div class="row-actions">
+        <button type="submit" name="outcome" value="passed" class="btn btn-primary" {% if exposure.status.value in ['resolved','risk_accepted'] %}disabled{% endif %}>Retest passed — close as verified</button>
+        <button type="submit" name="outcome" value="failed" class="btn btn-danger">Retest failed — reopen</button>
+      </div>
+    </form>
+    {% endif %}
+    <div>
+      <div class="section-label">Retest history</div>
+      <div class="card" style="margin-top:8px">
+        {% for r in retests %}
+        <div class="card-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span class="mono" style="font-size:11px;color:{{ 'var(--positive)' if r.outcome.value == 'passed' else 'var(--critical)' }}">{{ r.outcome.value | upper }} · {{ r.performed_by_username }} · {{ r.performed_at | humanize_dt }} · was {{ r.previous_status | status_label }}</span>
+          {% if r.notes %}<span class="prose" style="font-size:12px">{{ r.notes }}</span>{% endif %}
+        </div>
+        {% else %}
+        <div class="card-row"><span class="k" style="width:auto;color:var(--text-muted)">Not retested yet.</span></div>
+        {% endfor %}
+      </div>
+    </div>
+
+  {% elif tab == "evidence" %}
     <div>
       <div class="section-label">Linked findings ({{ findings | length }})</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
@@ -140,7 +257,7 @@
           </div>
           <div style="min-width:0">
             <div style="display:flex;align-items:baseline;gap:8px">
-              <span class="timeline-title">{{ event.event_type.value.replace('_', ' ') }}</span>
+              <span class="timeline-title">{{ event | event_label }}</span>
               <span class="timeline-when">{{ event.timestamp | humanize_dt }}</span>
             </div>
             {% if event.previous_value or event.new_value %}
@@ -173,9 +290,9 @@
       <label for="status-select">Status</label>
       <div style="display:flex;gap:8px">
         <select id="status-select" name="status" style="flex:1;appearance:none;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);padding:8px 10px;font:400 12px var(--font-mono);color:var(--text-primary)">
-          <option value="{{ exposure.status.value }}" selected>{{ exposure.status.value.replace('_', ' ') }} (current)</option>
+          <option value="{{ exposure.status.value }}" selected>{{ exposure.status | status_label }} (current)</option>
           {% for s in allowed_statuses %}
-          <option value="{{ s.value }}">{{ s.value.replace('_', ' ') }}</option>
+          <option value="{{ s.value }}">{{ s | status_label }}</option>
           {% endfor %}
         </select>
         <button type="submit" class="btn btn-secondary" {% if not allowed_statuses %}disabled{% endif %}>Update</button>
@@ -205,7 +322,7 @@
           hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="remediation">
-      <label for="target-date-input">Remediation target date</label>
+      <label for="target-date-input">Due date</label>
       <div style="display:flex;gap:8px">
         <input id="target-date-input" type="date" name="remediation_target_date"
                value="{{ exposure.remediation_target_date.isoformat() if exposure.remediation_target_date else '' }}">
@@ -217,7 +334,7 @@
           hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="remediation">
-      <label for="remediation-input">Remediation</label>
+      <label for="remediation-input">Remediation recommendation</label>
       <textarea id="remediation-input" name="remediation" rows="3">{{ exposure.remediation or '' }}</textarea>
       <button type="submit" class="btn btn-secondary" style="align-self:flex-start">Save</button>
     </form>
@@ -226,14 +343,14 @@
           hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="timeline">
-      <label for="note-input">Add a note</label>
+      <label for="note-input">Add an internal note (timeline only, never shown to the client)</label>
       <textarea id="note-input" name="note" rows="2" placeholder="Investigating with..."></textarea>
       <button type="submit" class="btn btn-secondary" style="align-self:flex-start">Add note</button>
     </form>
 
     <div class="notice">
       <span class="dot" aria-hidden="true"></span>
-      <div>Threnda does not apply fixes. It records the decision and who made it, in the Timeline tab.</div>
+      <div>"Verified closed" is not in this list on purpose: close a finding by recording a passed retest on the Retest tab.</div>
     </div>
   {% endif %}
 </div>

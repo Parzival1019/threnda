@@ -18,6 +18,6 @@
   <span class="cell-muted col-wide">{{ row.source }}</span>
   <span class="cell-muted col-wide" style="text-align:center">{{ row.dup_count }}</span>
   <span class="cell-muted col-wide">{{ exposure.last_seen | humanize_dt }}</span>
-  <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status.value.replace('_', ' ') }}</span>
+  <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status | status_label }}</span>
   <span class="cell-num">{{ exposure.first_seen | humanize_age }}</span>
 </div>

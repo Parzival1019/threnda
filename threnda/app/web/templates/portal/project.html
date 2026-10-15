@@ -1,0 +1,49 @@
+{% extends "portal/_layout.html" %}
+{% block title %}{{ workspace.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>{{ workspace.name }}</h2>
+  <p>Open a finding to see the details, mark it fixed when your team has remediated it, and attach evidence.
+     Your consultant then retests it; only a passed retest closes a finding.</p>
+</div>
+<div class="stat-grid">
+  <div class="stat-tile"><div class="label">Open</div><div class="value">{{ stats.active }}</div></div>
+  <div class="stat-tile {{ 'bad' if stats.critical_active else '' }}"><div class="label">Critical open</div><div class="value">{{ stats.critical_active }}</div></div>
+  <div class="stat-tile {{ 'warn' if stats.overdue else '' }}"><div class="label">Overdue</div><div class="value">{{ stats.overdue }}</div></div>
+  <div class="stat-tile"><div class="label">Awaiting retest</div><div class="value">{{ stats.awaiting_retest }}</div></div>
+  <div class="stat-tile good"><div class="label">Verified closed</div><div class="value">{{ stats.verified_closed }}</div></div>
+</div>
+<form method="get" action="/portal/projects/{{ workspace.id }}" class="filter-bar" style="margin-top:18px;border:1px solid var(--border);border-radius:6px">
+  <span class="label">Filters</span>
+  <input type="text" name="q" value="{{ q }}" placeholder="Search" aria-label="Search findings" style="min-width:180px">
+  <select name="status" aria-label="Status">
+    <option value="">All statuses</option>
+    {% for s in statuses %}<option value="{{ s.value }}" {% if status == s %}selected{% endif %}>{{ s | status_label }}</option>{% endfor %}
+  </select>
+  <select name="severity" aria-label="Severity">
+    <option value="">All severities</option>
+    {% for sv in severities %}<option value="{{ sv.value }}" {% if severity == sv %}selected{% endif %}>{{ sv.value }}</option>{% endfor %}
+  </select>
+  <label class="mono" style="font-size:10.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" name="overdue" value="true" {% if overdue %}checked{% endif %}> overdue only</label>
+  <button type="submit" class="btn btn-secondary">Apply</button>
+  <a class="btn btn-ghost" href="/portal/projects/{{ workspace.id }}">Reset</a>
+</form>
+<table class="data-table" style="margin-top:12px">
+  <thead><tr><th>ID</th><th>Finding</th><th>Severity</th><th>Affected system</th><th>Status</th><th>Owner</th><th>Due</th></tr></thead>
+  <tbody>
+  {% for e, is_late in rows %}
+    <tr>
+      <td class="mono"><a href="/portal/projects/{{ workspace.id }}/findings/{{ e.id }}">EXP-{{ e.id }}</a></td>
+      <td><a href="/portal/projects/{{ workspace.id }}/findings/{{ e.id }}">{{ e.title }}</a></td>
+      <td><span class="sev-icon {{ e.severity | severity_class }}"><span class="shape" aria-hidden="true"></span></span> {{ e.severity.value }}</td>
+      <td>{{ e.affected_system or "—" }}</td>
+      <td><span class="status-pill {{ e.status | status_class }}">{{ e.status | status_label }}</span></td>
+      <td>{{ e.owner or "—" }}</td>
+      <td class="{{ 'bad' if is_late else '' }}">{{ e.remediation_target_date.isoformat() if e.remediation_target_date else "—" }}{% if is_late %} (overdue){% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" style="color:var(--text-muted)">{% if total %}No findings match these filters.{% else %}No findings have been shared in this project yet.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

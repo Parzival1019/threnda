@@ -72,4 +72,6 @@ def update_asset(
     )
 
     tab_value = cast(DetailTab, tab) if tab in _VALID_TABS else "risk"
-    return _render_detail_panel(request, db, workspace, exposure, tab=tab_value, sync_row=True)
+    return _render_detail_panel(
+        request, db, workspace, exposure, tab=tab_value, membership=membership, sync_row=True
+    )

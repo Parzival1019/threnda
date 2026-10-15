@@ -16,9 +16,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session, selectinload
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from sqlalchemy import Select, func, or_, select
+from sqlalchemy.orm import Session, selectinload, undefer
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from threnda.app.api.deps import get_db
@@ -27,19 +27,34 @@ from threnda.app.models.enums import (
     AssetCriticality,
     ExposureStatus,
     PossibleDuplicateStatus,
+    RetestOutcome,
     SeverityLevel,
+    WorkspaceRole,
 )
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.finding import Finding
+from threnda.app.models.mixins import utcnow
 from threnda.app.models.possible_duplicate import PossibleDuplicate
+from threnda.app.models.retest import Retest
 from threnda.app.models.workspace import Workspace
 from threnda.app.models.workspace_membership import WorkspaceMembership
+from threnda.app.services.collaboration import (
+    CollaborationError,
+    add_attachment,
+    add_comment,
+    visible_attachments,
+    visible_comments,
+)
 from threnda.app.services.exposures import (
+    ACTIVE_STATUSES,
     ExposureChanges,
     InvalidStatusTransitionError,
     allowed_next_statuses,
     apply_exposure_update,
 )
+from threnda.app.services.manual_findings import ManualFindingInput, create_manual_finding
+from threnda.app.services.memberships import role_at_least
+from threnda.app.services.retests import RetestNotAllowedError, record_retest
 from threnda.app.services.risk_scoring import compute_risk_score
 from threnda.app.web.csrf import apply_csrf_cookie, get_csrf_token, verify_csrf
 from threnda.app.web.deps import (
@@ -52,7 +67,26 @@ from threnda.app.web.deps import (
 router = APIRouter(prefix="/exposures", tags=["web-exposures"])
 
 PAGE_SIZE = 50
-DetailTab = Literal["evidence", "identity", "timeline", "remediation", "risk"]
+DetailTab = Literal[
+    "details",
+    "remediation",
+    "discussion",
+    "retest",
+    "timeline",
+    "evidence",
+    "identity",
+    "risk",
+]
+#: Tabs shown in the panel, in order (``identity`` stays reachable by URL).
+PANEL_TABS: tuple[tuple[str, str], ...] = (
+    ("details", "Details"),
+    ("remediation", "Workflow"),
+    ("discussion", "Discussion"),
+    ("retest", "Retest"),
+    ("timeline", "Timeline"),
+    ("evidence", "Sources"),
+    ("risk", "Risk"),
+)
 
 _SORT_COLUMNS: dict[str, Any] = {
     "risk": Exposure.risk_score.desc(),
@@ -77,8 +111,15 @@ def _filtered_query(
     q: str | None,
     min_risk: int | None = None,
     max_risk: int | None = None,
+    overdue: bool = False,
 ) -> Select[tuple[Exposure]]:
     stmt = select(Exposure).where(Exposure.workspace_id == workspace_id)
+    if overdue:
+        stmt = stmt.where(
+            Exposure.status.in_(ACTIVE_STATUSES),
+            Exposure.remediation_target_date.is_not(None),
+            Exposure.remediation_target_date < utcnow().date(),
+        )
     if status is not None:
         stmt = stmt.where(Exposure.status == status)
     if severity is not None:
@@ -86,7 +127,15 @@ def _filtered_query(
     if owner:
         stmt = stmt.where(Exposure.owner == owner)
     if q:
-        stmt = stmt.where(Exposure.title.ilike(f"%{q}%"))
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                Exposure.title.ilike(pattern),
+                Exposure.description.ilike(pattern),
+                Exposure.affected_system.ilike(pattern),
+                Exposure.owner.ilike(pattern),
+            )
+        )
     if min_risk is not None:
         stmt = stmt.where(Exposure.risk_score >= min_risk)
     if max_risk is not None:
@@ -106,7 +155,9 @@ def _row_view(exposure: Exposure) -> dict[str, object]:
     itself.
     """
     findings = exposure.findings
-    asset_name = next((f.asset.name for f in findings if f.asset is not None), None)
+    asset_name = exposure.affected_system or next(
+        (f.asset.name for f in findings if f.asset is not None), None
+    )
     source_names = sorted({f.source.name for f in findings if f.source is not None})
     if not source_names:
         source_label = "—"
@@ -132,8 +183,10 @@ def queue(
     q: str | None = None,
     min_risk: int | None = None,
     max_risk: int | None = None,
+    overdue: bool = False,
     sort: str = "risk",
     offset: int = 0,
+    open: int | None = None,
     membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -146,12 +199,14 @@ def queue(
         q=q,
         min_risk=min_risk,
         max_risk=max_risk,
+        overdue=overdue,
     )
     total = db.execute(select(func.count()).select_from(filtered.subquery())).scalar_one()
 
     order = _SORT_COLUMNS.get(sort, _SORT_COLUMNS["risk"])
     stmt = (
         filtered.options(
+            undefer(Exposure.affected_system),
             selectinload(Exposure.findings).selectinload(Finding.asset),
             selectinload(Exposure.findings).selectinload(Finding.source),
         )
@@ -181,12 +236,24 @@ def queue(
         "q": q,
         "min_risk": min_risk,
         "max_risk": max_risk,
+        "overdue": overdue,
         "sort": sort,
         "statuses": list(ExposureStatus),
         "severities": list(SeverityLevel),
         "csrf_token": token,
         **build_shell_context(request, db, workspace, membership),
     }
+
+    if open is not None and not _is_htmx(request):
+        opened = db.get(Exposure, open)
+        if opened is not None and opened.workspace_id == workspace.id:
+            # The panel's own keys (exposure, tab, ...) don't collide with
+            # the queue's except for identical shared ones (workspace,
+            # csrf_token, statuses, severities).
+            context.update(
+                _panel_context(request, db, workspace, opened, tab="details", membership=membership)
+            )
+            context["panel_open"] = True
 
     template = "exposures/_queue_inner.html" if _is_htmx(request) else "exposures/queue.html"
     response = templates.TemplateResponse(request, template, context)
@@ -221,7 +288,9 @@ def _panel_context(
     exposure: Exposure,
     *,
     tab: DetailTab,
+    membership: WorkspaceMembership,
     error: str | None = None,
+    notice: str | None = None,
 ) -> dict[str, object]:
     pending_duplicate = db.execute(
         select(PossibleDuplicate)
@@ -246,7 +315,22 @@ def _panel_context(
         "risk_result": compute_risk_score(exposure),
         "linked_assets": _linked_assets(exposure),
         "criticalities": list(AssetCriticality),
+        "severities": list(SeverityLevel),
         "error": error,
+        "notice": notice,
+        "panel_tabs": PANEL_TABS,
+        "comments": visible_comments(db, exposure, membership.role),
+        "attachments": visible_attachments(db, exposure, membership.role),
+        "retests": db.execute(
+            select(Retest)
+            .where(Retest.workspace_id == workspace.id, Retest.exposure_id == exposure.id)
+            .order_by(Retest.performed_at.desc())
+        )
+        .scalars()
+        .all(),
+        "can_write": role_at_least(membership.role, WorkspaceRole.ANALYST),
+        "max_attachment_bytes": request.app.state.settings.attachment_max_bytes,
+        "today": utcnow().date(),
     }
 
 
@@ -257,7 +341,9 @@ def _render_detail_panel(
     exposure: Exposure,
     *,
     tab: DetailTab,
+    membership: WorkspaceMembership,
     error: str | None = None,
+    notice: str | None = None,
     sync_row: bool = False,
 ) -> Response:
     """Render the detail panel; optionally an out-of-band refresh of its
@@ -265,7 +351,16 @@ def _render_detail_panel(
     what the row displays (status pill, risk score), so the panel and the
     queue behind it never show inconsistent state without a full reload.
     """
-    context = _panel_context(request, db, workspace, exposure, tab=tab, error=error)
+    context = _panel_context(
+        request,
+        db,
+        workspace,
+        exposure,
+        tab=tab,
+        membership=membership,
+        error=error,
+        notice=notice,
+    )
     template = "exposures/_detail_panel.html"
     if sync_row:
         context["row"] = _row_view(exposure)
@@ -282,13 +377,116 @@ def _render_detail_panel(
 def detail_panel(
     request: Request,
     exposure_id: int,
-    tab: DetailTab = "evidence",
+    tab: DetailTab = "details",
     membership: WorkspaceMembership = Depends(get_current_membership),
     db: Session = Depends(get_db),
 ) -> Response:
     workspace = membership.workspace
     exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
-    return _render_detail_panel(request, db, workspace, exposure, tab=tab)
+    return _render_detail_panel(request, db, workspace, exposure, tab=tab, membership=membership)
+
+
+@router.get("/new")
+def new_finding_form(
+    request: Request,
+    membership: WorkspaceMembership = Depends(require_analyst),
+    db: Session = Depends(get_db),
+) -> Response:
+    return _render_new_finding(request, db, membership, values={}, error=None)
+
+
+def _render_new_finding(
+    request: Request,
+    db: Session,
+    membership: WorkspaceMembership,
+    *,
+    values: dict[str, str],
+    error: str | None,
+    status_code: int = 200,
+) -> Response:
+    token = get_csrf_token(request)
+    response = templates.TemplateResponse(
+        request,
+        "exposures/new.html",
+        {
+            "active_nav": "exposures",
+            "values": values,
+            "error": error,
+            "severities": list(SeverityLevel),
+            "csrf_token": token,
+            **build_shell_context(request, db, membership.workspace, membership),
+        },
+        status_code=status_code,
+    )
+    apply_csrf_cookie(request, response, token)
+    return response
+
+
+@router.post("/new")
+def create_finding(
+    request: Request,
+    csrf_token: str = Form(...),
+    title: str = Form(default=""),
+    severity: str = Form(default=""),
+    affected_system: str = Form(default=""),
+    description: str = Form(default=""),
+    remediation: str = Form(default=""),
+    owner: str = Form(default=""),
+    due_date: str = Form(default=""),
+    membership: WorkspaceMembership = Depends(require_analyst),
+    db: Session = Depends(get_db),
+) -> Response:
+    # Registered before POST /{exposure_id} for the same reason as /bulk.
+    verify_csrf(request, csrf_token)
+    values = {
+        "title": title,
+        "severity": severity,
+        "affected_system": affected_system,
+        "description": description,
+        "remediation": remediation,
+        "owner": owner,
+        "due_date": due_date,
+    }
+    try:
+        resolved_severity = SeverityLevel(severity)
+    except ValueError:
+        return _render_new_finding(
+            request, db, membership, values=values, error="Choose a severity.", status_code=422
+        )
+    try:
+        due = date.fromisoformat(due_date) if due_date else None
+    except ValueError:
+        return _render_new_finding(
+            request,
+            db,
+            membership,
+            values=values,
+            error="Due date must be a valid date (YYYY-MM-DD).",
+            status_code=422,
+        )
+    try:
+        exposure = create_manual_finding(
+            db,
+            membership.workspace,
+            ManualFindingInput(
+                title=title,
+                severity=resolved_severity,
+                description=description,
+                affected_system=affected_system,
+                remediation=remediation,
+                owner=owner,
+                due_date=due,
+            ),
+            actor=membership.user.username,
+        )
+    except ValueError as exc:
+        return _render_new_finding(
+            request, db, membership, values=values, error=str(exc), status_code=422
+        )
+    return RedirectResponse(
+        url=f"/exposures?workspace_id={membership.workspace_id}&open={exposure.id}",
+        status_code=303,
+    )
 
 
 @router.post("/bulk")
@@ -383,6 +581,177 @@ def update_exposure(
             actor=membership.user.username,
         )
     except InvalidStatusTransitionError as exc:
-        return _render_detail_panel(request, db, workspace, exposure, tab=tab, error=str(exc))
+        return _render_detail_panel(
+            request, db, workspace, exposure, tab=tab, membership=membership, error=str(exc)
+        )
 
-    return _render_detail_panel(request, db, workspace, exposure, tab=tab, sync_row=True)
+    return _render_detail_panel(
+        request, db, workspace, exposure, tab=tab, membership=membership, sync_row=True
+    )
+
+
+@router.post("/{exposure_id}/details")
+def update_details(
+    request: Request,
+    exposure_id: int,
+    csrf_token: str = Form(...),
+    title: str = Form(...),
+    severity: str = Form(...),
+    affected_system: str = Form(default=""),
+    description: str = Form(default=""),
+    membership: WorkspaceMembership = Depends(require_analyst),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    workspace = membership.workspace
+    exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
+    try:
+        changes: ExposureChanges = {
+            "title": title.strip(),
+            "severity": SeverityLevel(severity),
+            "affected_system": affected_system.strip() or None,
+            "description": description.strip() or None,
+        }
+        apply_exposure_update(db, exposure, changes, note=None, actor=membership.user.username)
+    except ValueError as exc:
+        return _render_detail_panel(
+            request, db, workspace, exposure, tab="details", membership=membership, error=str(exc)
+        )
+    return _render_detail_panel(
+        request,
+        db,
+        workspace,
+        exposure,
+        tab="details",
+        membership=membership,
+        notice="Saved.",
+        sync_row=True,
+    )
+
+
+@router.post("/{exposure_id}/comments")
+def post_comment(
+    request: Request,
+    exposure_id: int,
+    csrf_token: str = Form(...),
+    body: str = Form(default=""),
+    internal: str | None = Form(default=None),
+    membership: WorkspaceMembership = Depends(require_analyst),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    workspace = membership.workspace
+    exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
+    try:
+        add_comment(
+            db,
+            exposure,
+            body=body,
+            internal=internal == "true",
+            actor=membership.user,
+            actor_role=membership.role,
+        )
+    except CollaborationError as exc:
+        return _render_detail_panel(
+            request,
+            db,
+            workspace,
+            exposure,
+            tab="discussion",
+            membership=membership,
+            error=str(exc),
+        )
+    return _render_detail_panel(
+        request, db, workspace, exposure, tab="discussion", membership=membership
+    )
+
+
+@router.post("/{exposure_id}/attachments")
+async def post_attachment(
+    request: Request,
+    exposure_id: int,
+    csrf_token: str = Form(...),
+    file: UploadFile = File(...),
+    internal: str | None = Form(default=None),
+    membership: WorkspaceMembership = Depends(require_analyst),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    workspace = membership.workspace
+    exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
+    max_bytes: int = request.app.state.settings.attachment_max_bytes
+    raw = await file.read(max_bytes + 1)
+    try:
+        add_attachment(
+            db,
+            exposure,
+            filename=file.filename,
+            raw=raw,
+            internal=internal == "true",
+            actor=membership.user,
+            actor_role=membership.role,
+            max_bytes=max_bytes,
+        )
+    except CollaborationError as exc:
+        return _render_detail_panel(
+            request,
+            db,
+            workspace,
+            exposure,
+            tab="discussion",
+            membership=membership,
+            error=str(exc),
+        )
+    return _render_detail_panel(
+        request,
+        db,
+        workspace,
+        exposure,
+        tab="discussion",
+        membership=membership,
+        notice="Evidence uploaded.",
+    )
+
+
+@router.post("/{exposure_id}/retest")
+def post_retest(
+    request: Request,
+    exposure_id: int,
+    csrf_token: str = Form(...),
+    outcome: str = Form(...),
+    notes: str = Form(default=""),
+    membership: WorkspaceMembership = Depends(require_analyst),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, csrf_token)
+    workspace = membership.workspace
+    exposure = _get_exposure_or_404(db, workspace.id, exposure_id)
+    try:
+        resolved_outcome = RetestOutcome(outcome)
+        record_retest(
+            db,
+            exposure,
+            outcome=resolved_outcome,
+            notes=notes,
+            actor=membership.user,
+            actor_role=membership.role,
+        )
+    except (ValueError, RetestNotAllowedError) as exc:
+        return _render_detail_panel(
+            request, db, workspace, exposure, tab="retest", membership=membership, error=str(exc)
+        )
+    notice = (
+        "Retest passed — the finding is now verified closed."
+        if resolved_outcome == RetestOutcome.PASSED
+        else "Retest failed — the finding is reopened."
+    )
+    return _render_detail_panel(
+        request,
+        db,
+        workspace,
+        exposure,
+        tab="retest",
+        membership=membership,
+        notice=notice,
+        sync_row=True,
+    )

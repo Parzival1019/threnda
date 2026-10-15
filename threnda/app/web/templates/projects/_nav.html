@@ -1,0 +1,4 @@
+<nav style="display:flex;gap:14px;font-size:12.5px" aria-label="Consultancy">
+  <a href="/overview" {% if active_nav == 'overview' %}aria-current="page" style="font-weight:600"{% endif %}>All projects</a>
+  {% if current_user.is_org_admin %}<a href="/clients" {% if active_nav == 'clients' %}aria-current="page" style="font-weight:600"{% endif %}>Clients</a>{% endif %}
+</nav>

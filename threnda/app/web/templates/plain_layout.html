@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Threnda{% endblock %} · Threnda</title>
+  <link rel="stylesheet" href="/static/css/tokens.css?v=0.2.0-pilot1">
+  <link rel="stylesheet" href="/static/css/app.css?v=0.2.0-pilot1">
+  <script src="/static/vendor/htmx.min.js"></script>
+</head>
+<body style="overflow:auto">
+{% if demo_mode %}<div class="demo-banner" role="note">DEMO — every client, finding and user here is fictional. This instance can be reset at any time.</div>{% endif %}
+<div class="portal-shell">
+  <header class="portal-header">
+    <div class="sidebar-brand">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="name">Threnda</span>
+      <span class="edition">{% block edition %}consultancy{% endblock %}</span>
+    </div>
+    {% block nav %}{% endblock %}
+    <span class="spacer">
+      <span class="mono" style="font-size:11.5px;color:var(--text-secondary)">{{ current_user.username }}</span>
+      <form method="post" action="/logout" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+        <button type="submit" class="btn-link mono" style="font-size:11.5px">Log out</button>
+      </form>
+    </span>
+  </header>
+  {% block content %}{% endblock %}
+</div>
+<script src="/static/js/app.js?v=0.2.0-pilot1"></script>
+</body>
+</html>

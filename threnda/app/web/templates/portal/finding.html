@@ -1,0 +1,99 @@
+{% extends "portal/_layout.html" %}
+{% block title %}EXP-{{ exposure.id }}{% endblock %}
+{% block content %}
+<div style="margin:6px 0 14px"><a href="/portal/projects/{{ workspace.id }}">← All findings</a></div>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+  <span class="sev-icon {{ exposure.severity | severity_class }}"><span class="shape" aria-hidden="true"></span></span>
+  <span class="mono" style="font-size:11px;text-transform:uppercase">{{ exposure.severity.value }}</span>
+  <span class="status-pill {{ exposure.status | status_class }}">{{ exposure.status | status_label }}</span>
+  <span class="mono" style="font-size:11px;color:var(--text-muted)">EXP-{{ exposure.id }}</span>
+</div>
+<h2 style="margin:8px 0 18px;font-size:20px">{{ exposure.title }}</h2>
+{% if error %}<div class="error-banner" role="alert">{{ error }}</div>{% endif %}
+{% if notice %}<div class="callout success" role="status" style="margin-bottom:12px">{{ notice }}</div>{% endif %}
+<div class="two-col">
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div><div class="section-label">Description</div><div class="prose" style="margin-top:6px">{{ exposure.description or "—" }}</div></div>
+    <div><div class="section-label">Remediation recommendation</div><div class="prose" style="margin-top:6px">{{ remediation or "—" }}</div></div>
+
+    <div>
+      <div class="section-label">Discussion</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        {% for c in comments %}
+        <div class="comment"><div class="meta"><span>{{ c.author_username }}</span><span>{{ c.created_at | humanize_dt }}</span></div><div class="body">{{ c.body }}</div></div>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:12px">No comments yet.</p>
+        {% endfor %}
+      </div>
+      <form method="post" action="/portal/projects/{{ workspace.id }}/findings/{{ exposure.id }}/comments" class="inline-form" style="margin-top:10px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="sr-only" for="pc-body">Comment</label>
+        <textarea id="pc-body" name="body" rows="3" maxlength="10000" placeholder="Ask a question or describe what you changed…" required></textarea>
+        <div class="row-actions"><button type="submit" class="btn btn-secondary">Post comment</button></div>
+      </form>
+    </div>
+
+    <div>
+      <div class="section-label">Evidence</div>
+      <div class="card" style="margin-top:8px">
+        {% for a in attachments %}
+        <div class="card-row"><span class="k" style="width:auto;flex:1"><a href="/api/v1/attachments/{{ a.id }}/download?workspace_id={{ workspace.id }}">{{ a.filename }}</a></span>
+          <span class="v mono" style="font-size:10.5px">{{ a.size_bytes | filesize }} · {{ a.uploaded_by_username }} · {{ a.created_at | humanize_dt }}</span></div>
+        {% else %}
+        <div class="card-row"><span class="k" style="width:auto;color:var(--text-muted)">No files yet.</span></div>
+        {% endfor %}
+      </div>
+      <form method="post" enctype="multipart/form-data" action="/portal/projects/{{ workspace.id }}/findings/{{ exposure.id }}/attachments" class="inline-form" style="margin-top:10px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="sr-only" for="pa-file">Evidence file</label>
+        <input id="pa-file" type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.pdf,.txt,.log,.md,.csv,.json">
+        <div class="row-actions"><button type="submit" class="btn btn-secondary">Upload evidence</button>
+          <span class="mono" style="font-size:10.5px;color:var(--text-muted)">PNG, JPG, GIF, PDF, TXT, LOG, MD, CSV, JSON · max {{ max_attachment_bytes | filesize }}</span></div>
+      </form>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="card">
+      <div class="card-row"><span class="k">Affected system</span><span class="v">{{ exposure.affected_system or "—" }}</span></div>
+      <div class="card-row"><span class="k">Owner</span><span class="v">{{ exposure.owner or "—" }}</span></div>
+      <div class="card-row"><span class="k">Due date</span><span class="v" {% if overdue %}style="color:var(--critical)"{% endif %}>{{ exposure.remediation_target_date.isoformat() if exposure.remediation_target_date else "—" }}{% if overdue %} (overdue){% endif %}</span></div>
+    </div>
+
+    {% if can_report_fix %}
+    <form method="post" action="/portal/projects/{{ workspace.id }}/findings/{{ exposure.id }}/status" class="inline-form card" style="padding:12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="section-label">Report a fix</div>
+      <label for="fix-note" style="font-size:12px">What was changed? (optional, visible to your consultant)</label>
+      <textarea id="fix-note" name="note" rows="3" maxlength="10000"></textarea>
+      <div class="row-actions">
+        <button type="submit" name="status" value="fix_reported" class="btn btn-primary">Mark as fixed — request retest</button>
+        {% if can_mark_in_progress %}<button type="submit" name="status" value="in_progress" class="btn btn-secondary">Mark in progress</button>{% endif %}
+      </div>
+    </form>
+    {% elif exposure.status.value == 'fix_reported' %}
+    <div class="callout">You marked this finding as fixed. It stays open until your consultant's retest confirms the fix.</div>
+    {% elif exposure.status.value == 'resolved' %}
+    <div class="callout success">Verified closed — a retest confirmed the fix.</div>
+    {% elif exposure.status.value == 'risk_accepted' %}
+    <div class="callout warn">This finding's risk was accepted. Talk to your consultant if that should change.</div>
+    {% endif %}
+
+    <div>
+      <div class="section-label">History</div>
+      <div class="timeline" style="margin-top:10px">
+        {% for event in history %}
+        <div class="timeline-item"><div class="timeline-rail"><span class="timeline-dot" aria-hidden="true"></span>{% if not loop.last %}<span class="timeline-line"></span>{% endif %}</div>
+          <div style="min-width:0">
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span class="timeline-title">{{ event | event_label }}</span><span class="timeline-when">{{ event.timestamp | humanize_dt }}</span></div>
+            {% if event.event_type.value in ['retest_passed','retest_failed','owner_changed','remediation_date_changed','created','details_changed'] and event.new_value %}<div class="timeline-note">{{ event.new_value }}</div>{% endif %}
+            <div class="timeline-by mono">{{ event.actor or "" }}</div>
+          </div></div>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:12px">No history yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

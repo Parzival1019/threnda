@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Threnda{% endblock %} · Threnda</title>
-  <link rel="stylesheet" href="/static/css/tokens.css?v=0.1.0-1">
-  <link rel="stylesheet" href="/static/css/app.css?v=0.1.0-1">
+  <link rel="stylesheet" href="/static/css/tokens.css?v=0.2.0-pilot1">
+  <link rel="stylesheet" href="/static/css/app.css?v=0.2.0-pilot1">
   <script src="/static/vendor/htmx.min.js"></script>
 </head>
 <body>
+{% if demo_mode %}<div class="demo-banner" role="note">DEMO — every client, finding and user here is fictional. This instance can be reset at any time.</div>{% endif %}
 <div class="shell">
   <aside class="sidebar">
     <div class="sidebar-header">
@@ -17,14 +18,53 @@
         <span class="name">Threnda</span>
         <span class="edition">community</span>
       </div>
-      <div class="host">workspace: {{ workspace.name }}</div>
+      <form method="get" action="/exposures" style="margin-top:8px">
+        <label class="sr-only" for="project-switch">Project</label>
+        <select id="project-switch" name="workspace_id" class="compact-select" data-auto-submit style="width:100%">
+          {% for p in switchable_projects %}
+          <option value="{{ p.id }}" {% if p.id == workspace.id %}selected{% endif %}>{% if p.client %}{{ p.client.name }} · {% endif %}{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <div class="host">{% if project_client %}client: {{ project_client.name }}{% else %}internal project{% endif %}</div>
     </div>
     <nav class="sidebar-nav" aria-label="Primary">
+      <a class="nav-item" href="/overview"
+         {% if active_nav == 'overview' %}aria-current="page"{% endif %}>
+        <span>All projects</span>
+      </a>
+      {% if is_org_admin %}
+      <a class="nav-item" href="/clients"
+         {% if active_nav == 'clients' %}aria-current="page"{% endif %}>
+        <span>Clients</span>
+      </a>
+      {% endif %}
+      <div class="nav-group-label">This project</div>
+      <a class="nav-item" href="/?workspace_id={{ workspace.id }}"
+         {% if active_nav == 'dashboard' %}aria-current="page"{% endif %}>
+        <span>Status</span>
+      </a>
       <a class="nav-item" href="/exposures?workspace_id={{ workspace.id }}"
          {% if active_nav == 'exposures' %}aria-current="page"{% endif %}>
-        <span>Queue</span>
+        <span>Findings</span>
         <span class="count" id="nav-open-count">{{ nav_open_count }}</span>
       </a>
+      <a class="nav-item" href="/exposures?workspace_id={{ workspace.id }}&status=fix_reported"
+         {% if active_nav == 'retest' %}aria-current="page"{% endif %}>
+        <span>Awaiting retest</span>
+        <span class="count">{{ nav_retest_count }}</span>
+      </a>
+      {% if is_analyst %}
+      <a class="nav-item" href="/findings-import?workspace_id={{ workspace.id }}"
+         {% if active_nav == 'findings_import' %}aria-current="page"{% endif %}>
+        <span>Import findings CSV</span>
+      </a>
+      {% endif %}
+      <a class="nav-item" href="/report?workspace_id={{ workspace.id }}"
+         {% if active_nav == 'report' %}aria-current="page"{% endif %}>
+        <span>Status report</span>
+      </a>
+      <div class="nav-group-label">Scanner data</div>
       <a class="nav-item" href="/imports?workspace_id={{ workspace.id }}"
          {% if active_nav == 'imports' %}aria-current="page"{% endif %}>
         <span>Imports</span>
@@ -48,14 +88,13 @@
       {% if is_admin %}
       <a class="nav-item" href="/settings/members?workspace_id={{ workspace.id }}"
          {% if active_nav == 'settings' %}aria-current="page"{% endif %}>
-        <span>Settings</span>
+        <span>Members &amp; settings</span>
       </a>
       {% endif %}
     </nav>
     <div class="sidebar-footer">
-      <a href="/?workspace_id={{ workspace.id }}" class="mono" style="font-size:11.5px;color:var(--text-secondary)">Dashboard</a>
       <div class="mono" style="font-size:11.5px;color:var(--text-secondary);display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <span>{{ current_user.username }} · {{ current_role.value }}{% if not is_analyst %} (read-only){% endif %}</span>
+        <span>{{ current_user.username }} · {{ current_role | role_label }}</span>
         <form method="post" action="/logout" style="margin:0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
           <button type="submit" class="btn-link mono" style="font-size:11.5px">Log out</button>
@@ -78,6 +117,6 @@
     </div>
   </div>
 </div>
-<script src="/static/js/app.js?v=0.1.0-1"></script>
+<script src="/static/js/app.js?v=0.2.0-pilot1"></script>
 </body>
 </html>

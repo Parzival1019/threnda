@@ -3,15 +3,18 @@
 {% block page_title %}Dashboard{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h2>Overview</h2>
-  <p>A handful of real counts, not a visualization showpiece — see the queue
-     for anything that needs a decision.</p>
+  <h2>{% if project_client %}{{ project_client.name }} — {% endif %}{{ workspace.name }}</h2>
+  <p>{{ workspace.description or "Where this project stands. Click a number to see the findings behind it." }}</p>
 </div>
 <div class="stat-grid">
-  <div class="stat-tile">
-    <div class="label">Open</div>
-    <div class="value">{{ open_count }}</div>
-  </div>
+  <a class="stat-tile" href="/exposures?workspace_id={{ workspace.id }}">
+    <div class="label">Still open (all active)</div>
+    <div class="value">{{ active_count }}</div>
+  </a>
+  <a class="stat-tile" href="/exposures?workspace_id={{ workspace.id }}&status=fix_reported">
+    <div class="label">Awaiting retest</div>
+    <div class="value">{{ awaiting_retest }}</div>
+  </a>
   <div class="stat-tile {{ 'bad' if critical_count else '' }}">
     <div class="label">Critical (active)</div>
     <div class="value">{{ critical_count }}</div>
@@ -20,16 +23,16 @@
     <div class="label">High (active)</div>
     <div class="value">{{ high_count }}</div>
   </div>
-  <div class="stat-tile {{ 'warn' if overdue_count else '' }}">
+  <a class="stat-tile {{ 'warn' if overdue_count else '' }}" href="/exposures?workspace_id={{ workspace.id }}&overdue=true">
     <div class="label">Overdue</div>
     <div class="value">{{ overdue_count }}</div>
-  </div>
+  </a>
   <div class="stat-tile">
     <div class="label">New this week</div>
     <div class="value">{{ new_this_week }}</div>
   </div>
   <div class="stat-tile good">
-    <div class="label">Resolved this week</div>
+    <div class="label">Verified closed this week</div>
     <div class="value">{{ resolved_this_week }}</div>
   </div>
   <div class="stat-tile">
@@ -38,7 +41,8 @@
   </div>
 </div>
 <div style="margin-top:20px;display:flex;gap:10px">
-  <a class="btn btn-primary" href="/exposures?workspace_id={{ workspace.id }}">Open the queue</a>
-  <a class="btn btn-secondary" href="/imports/new?workspace_id={{ workspace.id }}">New import</a>
+  <a class="btn btn-primary" href="/exposures?workspace_id={{ workspace.id }}">Open findings</a>
+  <a class="btn btn-secondary" href="/report?workspace_id={{ workspace.id }}">Status report</a>
+  {% if is_analyst %}<a class="btn btn-secondary" href="/findings-import?workspace_id={{ workspace.id }}">Import findings CSV</a>{% endif %}
 </div>
 {% endblock %}
