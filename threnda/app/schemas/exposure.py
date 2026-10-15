@@ -4,7 +4,12 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from threnda.app.models.enums import ExposureHistoryEventType, ExposureStatus, SeverityLevel
+from threnda.app.models.enums import (
+    ExposureHistoryEventType,
+    ExposureStatus,
+    RetestOutcome,
+    SeverityLevel,
+)
 
 
 class ExposureRead(BaseModel):
@@ -22,6 +27,7 @@ class ExposureRead(BaseModel):
     acknowledged: bool
     remediation_target_date: date | None
     remediation: str | None
+    affected_system: str | None
     first_seen: datetime
     last_seen: datetime
     resolved_at: datetime | None
@@ -50,12 +56,16 @@ class ExposureUpdate(BaseModel):
     acknowledged: bool | None = None
     remediation_target_date: date | None = None
     remediation: str | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    description: str | None = None
+    severity: SeverityLevel | None = None
+    affected_system: str | None = Field(default=None, max_length=500)
     note: str | None = Field(
         default=None,
         description="Optional free-text note recorded in the exposure's audit history.",
     )
 
-    @field_validator("status", "acknowledged")
+    @field_validator("status", "acknowledged", "title", "severity")
     @classmethod
     def _reject_explicit_null(cls, value: object, info: ValidationInfo) -> object:
         if value is None:
@@ -104,3 +114,78 @@ class ExposureDetailRead(ExposureRead):
     """
 
     risk_score_breakdown: list[RiskScoreComponentRead]
+
+
+class ExposureCreate(BaseModel):
+    """``POST /api/v1/exposures`` — manual finding entry (pentester/admin)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=500)
+    severity: SeverityLevel
+    description: str | None = None
+    affected_system: str | None = Field(default=None, max_length=500)
+    remediation: str | None = None
+    owner: str | None = Field(default=None, max_length=200)
+    remediation_target_date: date | None = None
+
+
+class RetestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: RetestOutcome
+    notes: str | None = Field(default=None, max_length=10_000)
+
+
+class RetestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    exposure_id: int
+    outcome: RetestOutcome
+    previous_status: ExposureStatus
+    notes: str | None
+    performed_by_username: str
+    performed_at: datetime
+
+
+class ClientStatusUpdate(BaseModel):
+    """``POST /api/v1/exposures/{id}/client-status`` — "in progress" or
+    "fixed, please retest", the only status changes a client user can make."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: ExposureStatus
+    note: str | None = Field(default=None, max_length=10_000)
+
+
+class CommentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(min_length=1, max_length=10_000)
+    internal: bool = False
+
+
+class CommentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    exposure_id: int
+    author_username: str
+    body: str
+    is_internal: bool
+    created_at: datetime
+
+
+class AttachmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    exposure_id: int
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    is_internal: bool
+    uploaded_by_username: str
+    created_at: datetime

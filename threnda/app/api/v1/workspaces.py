@@ -54,6 +54,8 @@ def create_workspace(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> WorkspaceRead:
+    if not user.is_org_admin:
+        raise HTTPException(status_code=403, detail="Only a consultancy admin can create projects.")
     workspace = Workspace(name=payload.name)
     db.add(workspace)
     try:

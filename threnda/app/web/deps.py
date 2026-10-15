@@ -29,9 +29,9 @@ from threnda.app.models.workspace import Workspace
 from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.auth import validate_session
 from threnda.app.services.memberships import role_at_least
-from threnda.app.web.cookies import SESSION_COOKIE_NAME, WORKSPACE_COOKIE_NAME, cookie_secure
+from threnda.app.web.cookies import SESSION_COOKIE_NAME, WORKSPACE_COOKIE_NAME
 from threnda.app.web.csrf import get_csrf_token
-from threnda.app.web.errors import NotAuthenticatedError, NoWorkspaceError
+from threnda.app.web.errors import ClientPortalOnlyError, NotAuthenticatedError, NoWorkspaceError
 from threnda.app.web.filters import register_filters
 from threnda.app.web.resources import web_resource_dir
 
@@ -76,10 +76,14 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 
 def _lookup_membership(db: Session, user_id: int, workspace_id: int) -> WorkspaceMembership | None:
+    """A *consultancy* (non-client) membership — the only kind the
+    consultancy UI ever resolves. Client memberships are served exclusively
+    by ``threnda.app.web.routes.portal``."""
     return db.execute(
         select(WorkspaceMembership).where(
             WorkspaceMembership.workspace_id == workspace_id,
             WorkspaceMembership.user_id == user_id,
+            WorkspaceMembership.role != WorkspaceRole.CLIENT,
         )
     ).scalar_one_or_none()
 
@@ -109,13 +113,11 @@ def get_current_membership(
             workspace_id = -1
         membership = _lookup_membership(db, user.id, workspace_id)
         if membership is not None:
-            response.set_cookie(
-                WORKSPACE_COOKIE_NAME,
-                str(workspace_id),
-                httponly=True,
-                samesite="strict",
-                secure=cookie_secure(request.app.state.settings, request),
-            )
+            # Remember the explicitly chosen project. Setting the cookie on
+            # the injected ``response`` alone is lost whenever the route
+            # returns its own Response object (every template route does),
+            # so ``remember_workspace_cookie`` in threnda.app.main applies it.
+            request.state.remember_workspace_id = workspace_id
             return membership
 
     cookie_workspace_id = request.cookies.get(WORKSPACE_COOKIE_NAME)
@@ -129,13 +131,32 @@ def get_current_membership(
 
     first_membership = db.execute(
         select(WorkspaceMembership)
-        .where(WorkspaceMembership.user_id == user.id)
+        .where(
+            WorkspaceMembership.user_id == user.id,
+            WorkspaceMembership.role != WorkspaceRole.CLIENT,
+        )
         .order_by(WorkspaceMembership.workspace_id)
         .limit(1)
     ).scalar_one_or_none()
     if first_membership is None:
+        if user.client_id is not None or _has_client_membership(db, user.id):
+            raise ClientPortalOnlyError
         raise NoWorkspaceError
     return first_membership
+
+
+def _has_client_membership(db: Session, user_id: int) -> bool:
+    return (
+        db.execute(
+            select(WorkspaceMembership.id)
+            .where(
+                WorkspaceMembership.user_id == user_id,
+                WorkspaceMembership.role == WorkspaceRole.CLIENT,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        is not None
+    )
 
 
 def get_current_workspace(
@@ -198,6 +219,23 @@ def build_shell_context(
     document_count = db.execute(
         select(func.count()).select_from(Document).where(Document.workspace_id == workspace.id)
     ).scalar_one()
+    retest_count = db.execute(
+        select(func.count())
+        .select_from(Exposure)
+        .where(
+            Exposure.workspace_id == workspace.id,
+            Exposure.status == ExposureStatus.FIX_REPORTED,
+        )
+    ).scalar_one()
+    switchable = db.execute(
+        select(Workspace)
+        .join(WorkspaceMembership, WorkspaceMembership.workspace_id == Workspace.id)
+        .where(
+            WorkspaceMembership.user_id == membership.user_id,
+            WorkspaceMembership.role != WorkspaceRole.CLIENT,
+        )
+        .order_by(Workspace.name)
+    ).scalars()
     candidate_count = db.execute(
         select(func.count())
         .select_from(CandidateFinding)
@@ -214,6 +252,11 @@ def build_shell_context(
         "current_role": membership.role,
         "is_admin": role_at_least(membership.role, WorkspaceRole.ADMIN),
         "is_analyst": role_at_least(membership.role, WorkspaceRole.ANALYST),
+        "is_org_admin": membership.user.is_org_admin,
+        "demo_mode": request.app.state.settings.demo_mode,
+        "project_client": workspace.client,
+        "switchable_projects": list(switchable),
+        "nav_retest_count": retest_count,
         "nav_open_count": open_count,
         "nav_review_count": review_count,
         "nav_source_count": source_count,

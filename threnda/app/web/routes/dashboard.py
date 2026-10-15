@@ -15,6 +15,7 @@ from threnda.app.models.enums import ExposureStatus, SeverityLevel
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.mixins import utcnow
 from threnda.app.models.workspace_membership import WorkspaceMembership
+from threnda.app.services.exposures import ACTIVE_STATUSES
 from threnda.app.web.deps import build_shell_context, get_current_membership, templates
 
 router = APIRouter(tags=["web-dashboard"])
@@ -40,9 +41,13 @@ def dashboard(
     week_ago = now - timedelta(days=7)
     today = now.date()
 
-    not_resolved = Exposure.status != ExposureStatus.RESOLVED
+    # "Still needs work" = the active statuses; risk-accepted and verified
+    # closed findings are not counted as critical/high/overdue.
+    not_resolved = Exposure.status.in_(ACTIVE_STATUSES)
 
     open_count = _count(db, workspace.id, Exposure.status == ExposureStatus.OPEN)
+    active_count = _count(db, workspace.id, not_resolved)
+    awaiting_retest = _count(db, workspace.id, Exposure.status == ExposureStatus.FIX_REPORTED)
     critical_count = _count(
         db, workspace.id, Exposure.severity == SeverityLevel.CRITICAL, not_resolved
     )
@@ -82,6 +87,8 @@ def dashboard(
     context = {
         "active_nav": "dashboard",
         "open_count": open_count,
+        "active_count": active_count,
+        "awaiting_retest": awaiting_retest,
         "critical_count": critical_count,
         "high_count": high_count,
         "overdue_count": overdue_count,

@@ -28,6 +28,9 @@ def create_first_admin(db: Session, username: str, password: str) -> tuple[User,
         raise InstanceAlreadyInitializedError("An account already exists.")
 
     user = create_user(db, username, password, actor=None)
+    # The first account is the consultancy's owner: it can manage clients
+    # and create projects (docs/security.md, "Consultancy admins").
+    user.is_org_admin = True
     workspace = db.execute(select(Workspace).order_by(Workspace.id).limit(1)).scalar_one_or_none()
     if workspace is None:
         workspace = Workspace(name=DEFAULT_WORKSPACE_NAME)

@@ -159,7 +159,8 @@ def test_duplicate_normalized_identity_is_a_durable_client_error(
     app = create_app(settings=initialized_settings)
     with TestClient(app, raise_server_exceptions=False) as client:
         session = app.state.sessionmaker()
-        create_user(session, "reviewer", "Reviewer-Pass-1234!", actor=None)
+        reviewer = create_user(session, "reviewer", "Reviewer-Pass-1234!", actor=None)
+        reviewer.is_org_admin = True  # may create projects
         session.commit()
         session.close()
         login = client.post(

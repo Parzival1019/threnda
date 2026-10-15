@@ -22,11 +22,11 @@
       </div>
     </div>
     <div style="display:flex;gap:8px;flex:none">
-      <form method="post" action="/review/{{ candidate.id }}/merge">
+      <form method="post" action="/review/{{ candidate.id }}/merge?workspace_id={{ workspace.id }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn-primary">Merge</button>
       </form>
-      <form method="post" action="/review/{{ candidate.id }}/keep-separate">
+      <form method="post" action="/review/{{ candidate.id }}/keep-separate?workspace_id={{ workspace.id }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn-secondary">Keep separate</button>
       </form>

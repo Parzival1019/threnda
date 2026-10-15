@@ -12,6 +12,11 @@ class NoWorkspaceError(Exception):
     """Raised when a web route needs a workspace and the user has none yet."""
 
 
+class ClientPortalOnlyError(Exception):
+    """Raised when a client-side user (only ``client`` memberships) reaches a
+    consultancy page — they are sent to the client portal instead."""
+
+
 class NotAuthenticatedError(Exception):
     """Raised when a web route needs a session and none/an invalid one is present."""
 
@@ -23,7 +28,14 @@ class NotAuthenticatedError(Exception):
 def register_web_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(NoWorkspaceError)
     async def _no_workspace(_request: Request, _exc: NoWorkspaceError) -> RedirectResponse:
-        return RedirectResponse(url="/workspaces/new", status_code=302)
+        # The all-projects overview explains what to do next: a consultancy
+        # admin can create a client and project there; anyone else is told
+        # they are not a member of a project yet.
+        return RedirectResponse(url="/overview", status_code=302)
+
+    @app.exception_handler(ClientPortalOnlyError)
+    async def _client_portal(_request: Request, _exc: ClientPortalOnlyError) -> RedirectResponse:
+        return RedirectResponse(url="/portal", status_code=302)
 
     @app.exception_handler(NotAuthenticatedError)
     async def _not_authenticated(_request: Request, exc: NotAuthenticatedError) -> RedirectResponse:

@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+{% block title %}New finding{% endblock %}
+{% block page_title %}New finding{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Add a finding manually</h2>
+  <p>For a finding you want to record directly instead of importing it. It gets the same
+     workflow, history, retest and reporting as an imported finding.</p>
+</div>
+{% if error %}<div class="error-banner" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/exposures/new?workspace_id={{ workspace.id }}" style="max-width:720px" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="field"><label for="f-title">Title *</label>
+    <input id="f-title" type="text" name="title" value="{{ values.title or '' }}" maxlength="500" required></div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div class="field" style="flex:1;min-width:160px"><label for="f-sev">Severity *</label>
+      <select id="f-sev" name="severity" required>
+        <option value="">Choose…</option>
+        {% for sv in severities %}<option value="{{ sv.value }}" {% if values.severity == sv.value %}selected{% endif %}>{{ sv.value }}</option>{% endfor %}
+      </select></div>
+    <div class="field" style="flex:2;min-width:240px"><label for="f-sys">Affected system</label>
+      <input id="f-sys" type="text" name="affected_system" value="{{ values.affected_system or '' }}" maxlength="500" placeholder="e.g. portal.client.example"></div>
+  </div>
+  <div class="field"><label for="f-desc">Description</label>
+    <textarea id="f-desc" name="description" rows="6">{{ values.description or '' }}</textarea></div>
+  <div class="field"><label for="f-rem">Remediation recommendation</label>
+    <textarea id="f-rem" name="remediation" rows="4">{{ values.remediation or '' }}</textarea></div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div class="field" style="flex:2;min-width:220px"><label for="f-owner">Owner (responsible person or team)</label>
+      <input id="f-owner" type="text" name="owner" value="{{ values.owner or '' }}" maxlength="200"></div>
+    <div class="field" style="flex:1;min-width:160px"><label for="f-due">Due date</label>
+      <input id="f-due" type="date" name="due_date" value="{{ values.due_date or '' }}"></div>
+  </div>
+  <div class="row-actions">
+    <button type="submit" class="btn btn-primary">Create finding</button>
+    <a class="btn btn-ghost" href="/exposures?workspace_id={{ workspace.id }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

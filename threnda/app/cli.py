@@ -164,6 +164,138 @@ def ai_bundle(output: str, source: str | None = None) -> int:
     return 0
 
 
+def demo_reset(assume_yes: bool, if_empty: bool = False) -> int:
+    """Create or reset the fictional demo dataset (docs/demo.md).
+
+    ``if_empty`` only seeds a database with no accounts yet and otherwise
+    does nothing — what the demo container's entrypoint uses, so a restart
+    doesn't wipe a demo in progress.
+    """
+    from threnda.app.services.demo import DemoResetRefusedError, demo_password, reset_demo_data
+
+    settings = get_settings()
+    if not settings.demo_mode:
+        print(
+            "Refusing: THRENDA_DEMO_MODE is not true. Demo data is only ever written to a "
+            "separate demo instance — see docs/demo.md.",
+            file=sys.stderr,
+        )
+        return 1
+    if not assume_yes:
+        answer = input(
+            f"This deletes ALL data in {settings.database_url!r} and loads the fictional demo "
+            "dataset. Type 'reset demo' to continue: "
+        )
+        if answer.strip() != "reset demo":
+            print("Cancelled.", file=sys.stderr)
+            return 1
+    engine = create_engine_from_settings(settings)
+    session: Session = create_sessionmaker(engine)()
+    try:
+        if get_database_status(session) != "ok":
+            print("Database is not migrated. Run `alembic upgrade head` first.", file=sys.stderr)
+            return 1
+        if if_empty and has_accounts(session):
+            print("Demo data already present — leaving it as it is (--if-empty).")
+            return 0
+        try:
+            summary = reset_demo_data(session)
+        except DemoResetRefusedError as exc:
+            session.rollback()
+            print(f"Refusing: {exc}", file=sys.stderr)
+            return 2
+        session.commit()
+    finally:
+        session.close()
+        engine.dispose()
+    custom = bool(os.environ.get("THRENDA_DEMO_PASSWORD"))
+    print("Demo dataset loaded (fictional data only).")
+    print("Accounts: " + ", ".join(summary.users))
+    print(
+        "Password: the value of THRENDA_DEMO_PASSWORD"
+        if custom
+        else f"Password (demo-only default): {demo_password()}"
+    )
+    return 0
+
+
+def backup_database(output: str) -> int:
+    """Consistent online backup of a SQLite database (docs/backup-restore.md).
+
+    PostgreSQL deployments use ``pg_dump`` instead — see that document.
+    """
+    import sqlite3
+
+    settings = get_settings()
+    if not settings.is_sqlite:
+        print(
+            "This command backs up SQLite databases. For PostgreSQL use pg_dump — see "
+            "docs/backup-restore.md.",
+            file=sys.stderr,
+        )
+        return 1
+    source_path = settings.database_url.split("sqlite:///", 1)[1]
+    target = Path(output)
+    if target.exists():
+        print(f"Refusing to overwrite existing file {target}.", file=sys.stderr)
+        return 1
+    source = sqlite3.connect(f"file:{source_path}?mode=ro", uri=True)
+    try:
+        destination = sqlite3.connect(target)
+        try:
+            source.backup(destination)
+        finally:
+            destination.close()
+    finally:
+        source.close()
+    os.chmod(target, 0o600)
+    print(f"Backup written to {target} (includes attachments; treat it as sensitive).")
+    return 0
+
+
+def restore_database(backup: str, assume_yes: bool) -> int:
+    """Replace the SQLite database with a backup. Stop Threnda first."""
+    import shutil
+    import sqlite3
+
+    settings = get_settings()
+    if not settings.is_sqlite:
+        print("For PostgreSQL use pg_restore — see docs/backup-restore.md.", file=sys.stderr)
+        return 1
+    source = Path(backup)
+    if not source.is_file():
+        print(f"No such file: {source}", file=sys.stderr)
+        return 1
+    check = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+    try:
+        integrity = check.execute("PRAGMA integrity_check").fetchone()[0]
+        has_version = check.execute(
+            "SELECT count(*) FROM sqlite_master WHERE name = 'alembic_version'"
+        ).fetchone()[0]
+    except sqlite3.DatabaseError as exc:
+        print(f"Not a usable SQLite backup: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        check.close()
+    if integrity != "ok" or not has_version:
+        print("Not a Threnda database backup (integrity check or schema missing).", file=sys.stderr)
+        return 1
+    target = Path(settings.database_url.split("sqlite:///", 1)[1])
+    if not assume_yes:
+        answer = input(f"Replace {target} with {source}? Stop Threnda first. Type 'restore': ")
+        if answer.strip() != "restore":
+            print("Cancelled.", file=sys.stderr)
+            return 1
+    if target.exists():
+        previous = target.with_name(target.name + ".before-restore")
+        shutil.copy2(target, previous)
+        print(f"Previous database kept at {previous}.")
+    shutil.copy2(source, target)
+    os.chmod(target, 0o600)
+    print(f"Restored {source} -> {target}. Run `alembic upgrade head`, then start Threnda.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="threnda")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -188,7 +320,27 @@ def main(argv: list[str] | None = None) -> None:
     bundle_parser.add_argument(
         "--source", help="Optional directory containing already-downloaded verified artifacts."
     )
+    demo_parser = subparsers.add_parser("demo", help="Manage the fictional demo dataset.")
+    demo_subparsers = demo_parser.add_subparsers(dest="demo_command", required=True)
+    demo_reset_parser = demo_subparsers.add_parser(
+        "reset", help="Delete everything and load the fictional demo data (demo mode only)."
+    )
+    demo_reset_parser.add_argument("--yes", action="store_true", help="Skip the confirmation.")
+    demo_reset_parser.add_argument(
+        "--if-empty", action="store_true", help="Only seed a database that has no accounts yet."
+    )
+    backup_parser = subparsers.add_parser("backup", help="Back up a SQLite database.")
+    backup_parser.add_argument("output", help="Path of the backup file to create.")
+    restore_parser = subparsers.add_parser("restore", help="Restore a SQLite backup.")
+    restore_parser.add_argument("backup", help="Backup file created by `threnda backup`.")
+    restore_parser.add_argument("--yes", action="store_true", help="Skip the confirmation.")
     args = parser.parse_args(argv)
+    if args.command == "demo" and args.demo_command == "reset":
+        raise SystemExit(demo_reset(args.yes or args.if_empty, args.if_empty))
+    if args.command == "backup":
+        raise SystemExit(backup_database(args.output))
+    if args.command == "restore":
+        raise SystemExit(restore_database(args.backup, args.yes))
 
     if args.command == "bootstrap-admin":
         raise SystemExit(bootstrap_admin())

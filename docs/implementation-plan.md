@@ -1291,3 +1291,41 @@ remains owner- and Apple-credential-gated.
 - The production Docker image was rebuilt after the shared-bootstrap refactor
   and passed a fresh SQLite migration plus real HTTP health smoke test. This
   confirms the new Desktop path did not regress Community Server.
+
+## Milestone 10 — Consultancy pilot readiness
+
+Status: implemented and locally verified on branch `feat/pilot-readiness`;
+pending owner review. Scope, decisions and handover (Hungarian):
+[pilot/atadas.md](pilot/atadas.md).
+
+- [x] Clients and client projects (`Client`, `Workspace.client_id`),
+      consultancy admins (`User.is_org_admin`), project creation gated on it.
+- [x] `client` role bound to one client (`User.client_id`), lowest in the
+      hierarchy; client portal; server-side filtering of internal content.
+- [x] One-time hashed invitation links; tokens redacted from access logs.
+- [x] `fix_reported` status; verified closure (`resolved`) only through a
+      recorded `Retest`; failed retests reopen.
+- [x] Comments (internal/client-visible) and evidence attachments stored
+      in the database with type/size limits and audited downloads.
+- [x] Manual finding entry/editing; strict findings CSV template with
+      all-or-nothing validation and documented re-import identity rules.
+- [x] All-projects overview, project status page, printable status report,
+      export columns for affected system and description.
+- [x] Fictional demo dataset with a demo-mode + database-marker guarded
+      reset; SQLite `threnda backup`/`restore`.
+- [x] Fixed a pre-existing multi-workspace bug: detail-panel and review/
+      document forms posted without `workspace_id` and the workspace cookie
+      was never persisted, so actions in a non-default workspace returned 404.
+
+### Milestone 10 verification
+
+- Ruff lint/format, strict mypy, `pip check`, Bandit (high), `pip-audit`
+  (no known vulnerabilities) and **723 tests** pass, 37 of them new pilot
+  tests (`tests/test_pilot_*.py`).
+- Alembic upgrade → downgrade → upgrade on SQLite; the historical
+  backfill migration still runs against the current ORM.
+- The Hungarian tester guide was replayed end to end in headless Chrome
+  against a live demo instance (21/21 steps), and the landing-page form
+  delivery was checked against a local receiver (`landing/check_form.py`).
+- Not verified here: Docker images/Compose runs and the PostgreSQL
+  backup/restore drill (no Docker daemon on the build machine).

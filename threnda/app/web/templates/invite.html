@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Accept invitation · Threnda</title>
+  <link rel="stylesheet" href="/static/css/tokens.css?v=0.2.0-pilot1">
+  <link rel="stylesheet" href="/static/css/app.css?v=0.2.0-pilot1">
+</head>
+<body>
+<div style="max-width:440px;margin:100px auto;padding:0 20px">
+  <div class="sidebar-brand" style="margin-bottom:24px">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="name" style="font-size:16px">Threnda</span>
+  </div>
+  <div class="first-run-card" style="margin:0">
+    <h3>Set up your account</h3>
+    {% if error %}<div class="error-banner" role="alert">{{ error }}</div>{% endif %}
+    {% if username %}
+    <p style="font-size:12.5px;color:var(--text-secondary)">You were invited to <strong>{{ project }}</strong> as <strong>{{ role_label }}</strong>.
+       Your username is <span class="mono">{{ username }}</span>. Choose a password (at least 12 characters, mixing letters with digits or symbols).</p>
+    <form method="post" action="/invite/{{ token }}" style="margin-top:12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="inv-pass">Password</label>
+        <input id="inv-pass" type="password" name="password" required minlength="12" maxlength="256" autocomplete="new-password" autofocus>
+      </div>
+      <div class="field">
+        <label for="inv-pass2">Repeat password</label>
+        <input id="inv-pass2" type="password" name="password_confirm" required minlength="12" maxlength="256" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary">Create account</button>
+    </form>
+    {% else %}
+    <p style="font-size:12.5px"><a href="/login">Go to the login page</a> or ask your contact for a new invitation.</p>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

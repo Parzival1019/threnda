@@ -15,6 +15,7 @@ from threnda.app.api.v1 import (
     imports,
     members,
     possible_duplicates,
+    projects,
     sources,
     webhooks,
     workspaces,
@@ -25,6 +26,8 @@ api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(workspaces.router)
 api_router.include_router(exposures.router)
+api_router.include_router(exposures.attachments_router)
+api_router.include_router(projects.router)
 api_router.include_router(imports.router)
 api_router.include_router(sources.router)
 api_router.include_router(assets.router)

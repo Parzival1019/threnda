@@ -1,0 +1,11 @@
+{% extends "plain_layout.html" %}
+{% block edition %}client portal{% endblock %}
+{% block nav %}
+<nav style="display:flex;gap:14px;font-size:12.5px" aria-label="Portal">
+  <a href="/portal">My projects</a>
+  {% if workspace %}
+  <a href="/portal/projects/{{ workspace.id }}">Findings</a>
+  <a href="/portal/projects/{{ workspace.id }}/report">Status report</a>
+  {% endif %}
+</nav>
+{% endblock %}

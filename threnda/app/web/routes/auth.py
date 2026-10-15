@@ -53,13 +53,28 @@ def _safe_next(next_path: str | None) -> str:
     return "/"
 
 
+_NOTICES = {"account-created": "Your account is ready — log in with your new password."}
+
+
 @router.get("/login")
-def login_form(request: Request, next: str | None = None, error: str | None = None) -> Response:
+def login_form(
+    request: Request,
+    next: str | None = None,
+    error: str | None = None,
+    notice: str | None = None,
+) -> Response:
     token = get_csrf_token(request)
     response = templates.TemplateResponse(
         request,
         "login.html",
-        {"csrf_token": token, "next": next or "", "error": error},
+        {
+            "csrf_token": token,
+            "next": next or "",
+            "error": error,
+            # Only fixed, known messages — never echo the query string.
+            "notice": _NOTICES.get(notice or ""),
+            "demo_mode": request.app.state.settings.demo_mode,
+        },
     )
     apply_csrf_cookie(request, response, token)
     return response

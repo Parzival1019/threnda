@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Log in · Threnda</title>
-  <link rel="stylesheet" href="/static/css/tokens.css?v=0.1.0-1">
-  <link rel="stylesheet" href="/static/css/app.css?v=0.1.0-1">
+  <link rel="stylesheet" href="/static/css/tokens.css?v=0.2.0-pilot1">
+  <link rel="stylesheet" href="/static/css/app.css?v=0.2.0-pilot1">
 </head>
 <body>
 <div style="max-width:420px;margin:100px auto;padding:0 20px">
@@ -17,6 +17,12 @@
   <div class="first-run-card" style="margin:0">
     <h3>Log in</h3>
 
+    {% if notice %}
+    <div class="callout success" role="status">{{ notice }}</div>
+    {% endif %}
+    {% if demo_mode %}
+    <div class="callout warn" role="note" style="margin-top:8px">Demo instance — fictional data only. Demo accounts are listed in docs/demo.md.</div>
+    {% endif %}
     {% if error %}
     <div class="error-banner" role="alert">{{ error }}</div>
     {% endif %}

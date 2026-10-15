@@ -1,0 +1,36 @@
+{% extends "plain_layout.html" %}
+{% block title %}All projects{% endblock %}
+{% block nav %}{% include "projects/_nav.html" %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>All projects</h2>
+  <p>Every client project you are a member of, with the numbers that need attention.</p>
+</div>
+<div class="stat-grid">
+  <div class="stat-tile"><div class="label">Open findings</div><div class="value">{{ totals.active }}</div></div>
+  <div class="stat-tile {{ 'bad' if totals.critical_active else '' }}"><div class="label">Critical open</div><div class="value">{{ totals.critical_active }}</div></div>
+  <div class="stat-tile {{ 'warn' if totals.overdue else '' }}"><div class="label">Overdue</div><div class="value">{{ totals.overdue }}</div></div>
+  <div class="stat-tile"><div class="label">Awaiting retest</div><div class="value">{{ totals.awaiting_retest }}</div></div>
+  <div class="stat-tile good"><div class="label">Verified closed</div><div class="value">{{ totals.verified_closed }}</div></div>
+</div>
+<table class="data-table" style="margin-top:20px">
+  <thead><tr><th>Client</th><th>Project</th><th>Your role</th><th class="num">Open</th><th class="num">Critical open</th><th class="num">Overdue</th><th class="num">Awaiting retest</th><th class="num">Verified closed</th><th class="num">Total</th></tr></thead>
+  <tbody>
+  {% for p in stats %}
+    <tr>
+      <td>{{ p.workspace.client.name if p.workspace.client else "— (internal)" }}</td>
+      <td><a href="/?workspace_id={{ p.workspace.id }}">{{ p.workspace.name }}</a></td>
+      <td>{{ p.role | role_label }}</td>
+      <td class="num"><a href="/exposures?workspace_id={{ p.workspace.id }}">{{ p.active }}</a></td>
+      <td class="num {{ 'bad' if p.critical_active else '' }}"><a href="/exposures?workspace_id={{ p.workspace.id }}&severity=critical">{{ p.critical_active }}</a></td>
+      <td class="num {{ 'warn' if p.overdue else '' }}"><a href="/exposures?workspace_id={{ p.workspace.id }}&overdue=true">{{ p.overdue }}</a></td>
+      <td class="num"><a href="/exposures?workspace_id={{ p.workspace.id }}&status=fix_reported">{{ p.awaiting_retest }}</a></td>
+      <td class="num">{{ p.verified_closed }}</td>
+      <td class="num">{{ p.total }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" style="color:var(--text-muted)">You are not a member of any project yet.{% if current_user.is_org_admin %} <a href="/clients">Create a client and a project</a>.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

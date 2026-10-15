@@ -1,0 +1,37 @@
+# Threnda — separate, resettable DEMO instance with fictional data only.
+#
+#     docker compose -f docker-compose.demo.yml -p threnda-demo up -d --build
+#     open http://localhost:8090      # accounts: docs/demo.md
+#
+# Deliberately a different Compose project (-p threnda-demo), port, volume
+# and database (SQLite inside its own volume) from the real deployment in
+# docker-compose.yml, so demo data and the demo reset can never touch client
+# data. Reset at any time from Members & settings (as demo-admin) or with:
+#
+#     docker compose -f docker-compose.demo.yml -p threnda-demo exec app threnda demo reset --yes
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # "development" so session cookies work over plain-HTTP localhost.
+      # For a demo hosted behind HTTPS set THRENDA_DEMO_ENV=production and a
+      # real THRENDA_DEMO_SECRET_KEY (32+ characters).
+      THRENDA_ENV: ${THRENDA_DEMO_ENV:-development}
+      # Demo-only secret; the instance holds fictional data only. Override
+      # it if the demo is reachable by anyone other than the presenter.
+      THRENDA_SECRET_KEY: ${THRENDA_DEMO_SECRET_KEY:-demo-instance-secret-key-fictional-data-only-0001}
+      THRENDA_DATABASE_URL: sqlite:////app/data/demo.db
+      THRENDA_DEMO_MODE: "true"
+      THRENDA_DEMO_PASSWORD: ${THRENDA_DEMO_PASSWORD:-}
+      THRENDA_AI_PROVIDER: disabled
+    volumes:
+      - threnda-demo-data:/app/data
+    ports:
+      - "127.0.0.1:8090:8080"
+
+volumes:
+  threnda-demo-data:

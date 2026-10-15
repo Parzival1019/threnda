@@ -50,7 +50,10 @@ from threnda.app.models.exposure_history import ExposureHistory
 from threnda.app.models.finding import Finding
 from threnda.app.models.import_run import ImportRun
 from threnda.app.models.mixins import utcnow
-from threnda.app.services.dedup.correlation import correlate_new_finding
+from threnda.app.services.dedup.correlation import (
+    correlate_new_finding,
+    create_standalone_exposure,
+)
 from threnda.app.services.ingestion.base import (
     DuplicateIdentityError,
     NormalizedAsset,
@@ -146,6 +149,27 @@ def _get_or_create_asset(db: Session, workspace_id: int, normalized: NormalizedA
     return asset
 
 
+def _fill_affected_system(db: Session, finding: Finding) -> None:
+    """Give a newly linked exposure its human-facing "affected system".
+
+    Done here rather than in ``create_standalone_exposure`` because that
+    function also runs inside migration 32832b96f2c3's backfill, before the
+    ``affected_system`` column exists.
+    """
+    if finding.exposure_id is None or finding.asset_id is None:
+        return
+    exposure = db.get(Exposure, finding.exposure_id)
+    asset = db.get(Asset, finding.asset_id)
+    if exposure is not None and asset is not None and exposure.affected_system is None:
+        exposure.affected_system = asset.name
+        db.flush()
+
+
+def get_or_create_asset(db: Session, workspace_id: int, normalized: NormalizedAsset) -> Asset:
+    """Public entry point for manual finding entry (same asset identity rules)."""
+    return _get_or_create_asset(db, workspace_id, normalized)
+
+
 def _maybe_recompute_exposure_score(db: Session, finding: Finding) -> None:
     """Recompute the linked exposure's risk score, if there is one.
 
@@ -196,7 +220,17 @@ def persist_parsed_import(
     raw: bytes,
     parsed: ParsedImport,
     infer_resolved: bool = True,
+    correlate: bool = True,
 ) -> ImportRun:
+    """Persist ``parsed`` as one ``ImportRun``.
+
+    ``correlate=False`` gives every NEW finding its own exposure instead of
+    running cross-source correlation. The pentest findings-CSV template
+    (``threnda.app.services.findings_csv``) uses it: a pentest report's
+    rows are already distinct findings decided by a human, so
+    title/asset-similarity matching would only ever wrongly merge them or
+    park them in the possible-duplicate queue.
+    """
     duplicate_identities = find_duplicate_source_finding_ids(parsed.findings)
     if duplicate_identities:
         raise DuplicateIdentityError(
@@ -295,7 +329,11 @@ def persist_parsed_import(
         )
         db.add(finding)
         db.flush()
-        correlate_new_finding(db, finding)
+        if correlate:
+            correlate_new_finding(db, finding)
+        else:
+            create_standalone_exposure(db, finding)
+        _fill_affected_system(db, finding)
         # Sets finding.exposure_id for EXACT/HIGH/standalone correlation;
         # stays None for a POSSIBLE candidate, which has no exposure yet
         # to score (see _maybe_recompute_exposure_score).

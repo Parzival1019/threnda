@@ -102,12 +102,26 @@ Caddy handles TLS certificate acquisition automatically. Never set
 local-development-only override and Threnda refuses to start with it in
 production.
 
+## Configuration added for pilots
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `THRENDA_ATTACHMENT_MAX_BYTES` | 10485760 | per-file evidence limit (max 20 MiB) |
+| `THRENDA_INVITATION_TTL_HOURS` | 72 | invitation link lifetime |
+| `THRENDA_PUBLIC_BASE_URL` | empty | absolute URL used in invitation links; set it behind a reverse proxy, e.g. `https://threnda.example-consultancy.example` |
+| `THRENDA_DEMO_MODE` | false | **only** for a separate demo instance, see [demo.md](demo.md) |
+
+After the first login as the bootstrap admin: **Clients** → create a client
+→ create a project → **Members & settings** → invite the pentesters and the
+client's users.
+
 ## Backup and restore
 
-Everything Threnda needs to reconstruct its state lives in the PostgreSQL
-database (the `threnda-db-data` named volume). There is no separate
-file-based store to also back up beyond that — uploaded documents are
-extracted to text and stored in the database, not kept as files on disk.
+The full procedure, including SQLite and a restore check, is in
+[backup-restore.md](backup-restore.md). Everything Threnda needs to
+reconstruct its state lives in the PostgreSQL database (the
+`threnda-db-data` named volume), including evidence attachments. There is no
+separate file-based store to also back up.
 
 **Backup** (while the stack is running):
 
@@ -128,6 +142,15 @@ expects, start the app anyway — the entrypoint's `alembic upgrade head` will
 bring it forward automatically before serving traffic.
 
 ## Upgrades
+
+Upgrading an existing v0.1 instance to the pilot release applies migration
+`b479d2b9c183` (clients, client role, retests, comments, attachments,
+invitations). It makes every existing workspace admin a consultancy admin,
+keeps existing workspaces as "internal" projects (no client), and replaces
+five enum `CHECK` constraints. Take a backup first; the migration was
+verified with an upgrade → downgrade → upgrade round trip on SQLite (the
+downgrade folds `fix_reported` back to `in_progress` and deletes client
+memberships and the new history/audit event rows).
 
 ```bash
 git pull

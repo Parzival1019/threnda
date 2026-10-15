@@ -32,6 +32,12 @@ EXPECTED_TABLES = {
     "workspace_memberships",
     "audit_log_entries",
     "webhook_endpoints",
+    "clients",
+    "exposure_comments",
+    "attachments",
+    "retests",
+    "user_invitations",
+    "instance_meta",
     "alembic_version",
 }
 

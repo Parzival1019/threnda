@@ -41,6 +41,19 @@ actually work through.
 > independently-audited, production-hardened functionality — see
 > [docs/security.md](docs/security.md), "What this is not".
 
+## Consultancy pilot workflow
+
+The pilot release adds a security finding lifecycle for small pentest and
+security consultancies: clients and client projects, invitations, roles
+(consultancy admin, pentester, viewer, client user), manual findings and a
+validated findings CSV template, owners and due dates, comments and evidence
+files, a client portal where the client marks fixes, pentester retests
+(verified closure only through a passed retest), an all-projects overview, a
+printable client status report and CSV export. Start with
+[docs/finding-lifecycle.md](docs/finding-lifecycle.md) and the Hungarian
+pilot pack in [docs/pilot/](docs/pilot/README.md). A fictional, resettable
+demo: [docs/demo.md](docs/demo.md).
+
 ## Choose how to run Threnda Community
 
 Community has one codebase with two deployment modes:
@@ -220,6 +233,12 @@ tooling). None of it is implemented yet.
 
 ## Documentation
 
+- [docs/pilot/README.md](docs/pilot/README.md) — **pilot pack (Hungarian): handover, install & demo, trial guide, demo script, FAQ, pilot offer, editions, open business decisions**
+- [docs/finding-lifecycle.md](docs/finding-lifecycle.md) — clients, projects, roles, statuses, retest and verified closure
+- [docs/findings-csv.md](docs/findings-csv.md) — pentest findings CSV template, validation and re-import rules
+- [docs/attachments.md](docs/attachments.md) — evidence files: types, limits, access
+- [docs/demo.md](docs/demo.md) — the separate, resettable demo instance
+- [docs/backup-restore.md](docs/backup-restore.md) — backup and restore (PostgreSQL and SQLite)
 - [docs/architecture.md](docs/architecture.md) — process shape, code layout, request lifecycle
 - [docs/data-model.md](docs/data-model.md) — the full schema
 - [docs/importers.md](docs/importers.md) — CSV/JSON/SARIF/pentest-JSON ingestion contract

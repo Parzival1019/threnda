@@ -53,6 +53,10 @@ services:
       THRENDA_AI_BUNDLE_DIR: ${THRENDA_AI_BUNDLE_DIR:-}
       THRENDA_AI_EMBEDDED_PORT: ${THRENDA_AI_EMBEDDED_PORT:-11435}
       THRENDA_AI_STARTUP_TIMEOUT_SECONDS: ${THRENDA_AI_STARTUP_TIMEOUT_SECONDS:-120}
+      # Client collaboration (docs/attachments.md, docs/security.md).
+      THRENDA_ATTACHMENT_MAX_BYTES: ${THRENDA_ATTACHMENT_MAX_BYTES:-10485760}
+      THRENDA_INVITATION_TTL_HOURS: ${THRENDA_INVITATION_TTL_HOURS:-72}
+      THRENDA_PUBLIC_BASE_URL: ${THRENDA_PUBLIC_BASE_URL:-}
       # One-time first-admin bootstrap (docs/deployment.md). Leave both
       # blank after the first successful run — bootstrap-admin refuses to
       # run a second time regardless, but there's no reason to keep a

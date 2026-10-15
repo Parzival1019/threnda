@@ -1,0 +1,51 @@
+{% extends "plain_layout.html" %}
+{% block title %}Clients{% endblock %}
+{% block nav %}{% include "projects/_nav.html" %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Clients and projects</h2>
+  <p>A project is one engagement for one client: its findings, owners, client users and retests
+     are isolated from every other project.</p>
+</div>
+{% if error %}<div class="error-banner" role="alert">{{ error }}</div>{% endif %}
+<div class="two-col">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    {% for c in clients %}
+    <div class="card">
+      <div class="card-row" style="justify-content:space-between">
+        <span style="font-weight:600">{{ c.name }}</span>
+        <span class="mono" style="font-size:10.5px;color:var(--text-muted)">{{ c.projects | length }} project{{ '' if c.projects|length == 1 else 's' }}</span>
+      </div>
+      {% if c.notes %}<div class="card-row"><span class="prose" style="font-size:12px;color:var(--text-secondary)">{{ c.notes }}</span></div>{% endif %}
+      {% for p in c.projects %}
+      <div class="card-row">
+        <span class="k" style="width:auto;flex:1">
+          {% if p.id in member_ids %}<a href="/?workspace_id={{ p.id }}">{{ p.name }}</a>{% else %}{{ p.name }} <span class="mono" style="font-size:10.5px;color:var(--text-muted)">(not a member)</span>{% endif %}
+        </span>
+        {% if p.id in member_ids %}<a class="btn btn-ghost" href="/settings/members?workspace_id={{ p.id }}">Members</a>{% endif %}
+      </div>
+      {% endfor %}
+      <form method="post" action="/clients/{{ c.id }}/projects" class="card-row" style="gap:8px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="sr-only" for="pn-{{ c.id }}">New project name</label>
+        <input id="pn-{{ c.id }}" type="text" name="name" maxlength="200" required placeholder="New project, e.g. Web app pentest 2026 Q4" style="flex:1">
+        <button type="submit" class="btn btn-secondary">Create project</button>
+      </form>
+    </div>
+    {% else %}
+    <div class="callout">No clients yet. Create the first one on the right.</div>
+    {% endfor %}
+  </div>
+  <div>
+    <form method="post" action="/clients" class="inline-form card" style="padding:14px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="section-label">New client</div>
+      <div class="field"><label for="client-name">Client name</label>
+        <input id="client-name" type="text" name="name" maxlength="200" required></div>
+      <div class="field"><label for="client-notes">Notes (internal)</label>
+        <textarea id="client-notes" name="notes" rows="3"></textarea></div>
+      <button type="submit" class="btn btn-primary">Create client</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -14,11 +14,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from threnda.app.api.deps import get_db, require_admin
+from threnda.app.models.enums import WorkspaceRole
 from threnda.app.models.user import User
 from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.schemas.membership import MemberAdd, MemberRoleUpdate, MembershipRead
 from threnda.app.services.auth import InvalidUsernameError, WeakPasswordError, normalize_username
 from threnda.app.services.memberships import (
+    ClientRoleMismatchError,
     LastAdminError,
     add_member,
     remove_member,
@@ -76,12 +78,16 @@ def add_workspace_member(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except UsernameTakenError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if payload.role == WorkspaceRole.CLIENT:
+            user.client_id = membership.workspace.client_id
 
     try:
         new_membership = add_member(
             db, membership.workspace, user, payload.role, actor=membership.user
         )
         db.flush()
+    except ClientRoleMismatchError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except IntegrityError as exc:
         raise HTTPException(
             status_code=409, detail=f"{normalized!r} is already a member of this workspace."
@@ -120,6 +126,8 @@ def update_member(
         update_member_role(db, target, payload.role, actor=membership.user)
     except LastAdminError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ClientRoleMismatchError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return MembershipRead(
         user_id=target.user_id,
         role=target.role,

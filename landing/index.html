@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Threnda — findingtől az igazolt javításig</title>
+  <meta name="description" content="Self-hosted security finding lifecycle pentest- és kiberbiztonsági tanácsadó cégeknek: findingimport, javítás kiosztása, ügyfélportál, retest, igazolt lezárás.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <a class="brand" href="#"><span class="mark" aria-hidden="true"></span>Threnda</a>
+    <nav aria-label="Oldal">
+      <a href="#folyamat">Folyamat</a>
+      <a href="#kepernyok">Képernyők</a>
+      <a href="#gyik">GYIK</a>
+      <a class="btn btn-primary" href="#demo">Demót kérek</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">Pentest- és kiberbiztonsági tanácsadó cégeknek</p>
+        <h1>A riport leadása után is tudd, mi lett kijavítva — és mi lett igazoltan lezárva.</h1>
+        <p class="lead">A Threnda egy saját szerveren futó finding lifecycle eszköz: a findingeket importálod,
+          kiosztod a javítást, az ügyfél a saját portálján jelzi a javítást és bizonyítékot tölt fel,
+          te retesztelsz, és csak a sikeres retest zárja le a hibát.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#demo">10 perces demó kérése</a>
+          <a class="btn btn-ghost" href="#folyamat">Hogyan működik?</a>
+        </div>
+        <p class="fine">Self-hosted · az adatok a saját szervereteken maradnak · telemetria nélkül</p>
+      </div>
+      <figure class="shot shot-hero">
+        <img src="img/findings-retest.jpg" alt="A Threnda findinglistája egy retestre váró finding részleteivel" width="1600" height="1000">
+        <figcaption>Valós termékképernyő, fiktív demóadatokkal.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="problem">
+    <div class="wrap">
+      <h2>A probléma, amit ismersz</h2>
+      <div class="cards three">
+        <div class="card"><h3>A riport PDF-je nem munkalista</h3><p>Leadás után a findingek táblázatokba, e-mailekbe és ticketekbe szóródnak szét. Nem látszik, kié a javítás és mikor jár le.</p></div>
+        <div class="card"><h3>„Kijavítottuk" ≠ kijavítva</h3><p>Az ügyfél jelzése e-mailben érkezik, a retest eredménye egy másik dokumentumba kerül. Nehéz bizonyítani, mi lett ténylegesen ellenőrizve.</p></div>
+        <div class="card"><h3>A státusz összerakása kézi munka</h3><p>Minden egyeztetés előtt újra össze kell gyűjteni: mi nyitott, mi kritikus, mi késik, mi vár retestre.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="folyamat" class="flow">
+    <div class="wrap">
+      <h2>Egy folyamat, a findingtől az igazolt lezárásig</h2>
+      <ol class="steps">
+        <li><span class="n">1</span><h3>Findingbevitel</h3><p>CSV-import letölthető sablonnal (soronkénti hibalistával, duplikáció nélküli újraimporttal) vagy kézi felvétel.</p></li>
+        <li><span class="n">2</span><h3>Javítás kiosztása</h3><p>Felelős, határidő, javítási javaslat. Minden változás visszakövethető: ki, mikor, mit.</p></li>
+        <li><span class="n">3</span><h3>Ügyféloldali követés</h3><p>Az ügyfél a saját portálján látja a findingjeit, jelzi a javítást, bizonyítékot tölt fel — a belső megjegyzéseitek nélkül.</p></li>
+        <li><span class="n">4</span><h3>Retest</h3><p>A „javítva" jelzés retestre vár. A pentester rögzíti az eredményt: sikertelen retest újranyit, a megjegyzés az ügyfélnek is látszik.</p></li>
+        <li><span class="n">5</span><h3>Igazolt lezárás</h3><p>Lezárni csak sikeres retesttel lehet — sem az ügyfél jelzése, sem egy finding eltűnése az importból nem zár le semmit.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="kepernyok" class="screens">
+    <div class="wrap">
+      <h2>Valós képernyők</h2>
+      <p class="sub">Minden kép a működő termékből készült, kizárólag fiktív demóadatokkal.</p>
+      <div class="gallery">
+        <figure class="shot"><img src="img/client-portal.jpg" alt="Ügyfélportál: finding részletei, javítás jelzése és bizonyíték" loading="lazy" width="1600" height="1075"><figcaption><strong>Ügyfélportál</strong> — az ügyfél csak a saját projektjét látja, jelzi a javítást, bizonyítékot tölt fel.</figcaption></figure>
+        <figure class="shot"><img src="img/status-report.jpg" alt="Nyomtatható státuszriport súlyosság és állapot szerinti bontással" loading="lazy" width="1600" height="1153"><figcaption><strong>Átadható státuszriport</strong> — nyomtatható / PDF-be menthető, CSV-exporttal.</figcaption></figure>
+        <figure class="shot"><img src="img/all-projects.jpg" alt="Összes projekt áttekintése nyitott, kritikus, lejárt és retestre váró számokkal" loading="lazy" width="1600" height="1000"><figcaption><strong>Áttekintés</strong> — nyitott, kritikus, lejárt és retestre váró findingek projektenként.</figcaption></figure>
+        <figure class="shot"><img src="img/csv-import.jpg" alt="CSV-import oldal sablonletöltéssel és importszabályokkal" loading="lazy" width="1600" height="1000"><figcaption><strong>CSV-import</strong> — sablon, mezőellenőrzés, érthető hibalista, importösszesítő.</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="who">
+    <div class="wrap two">
+      <div>
+        <h2>Kinek szól</h2>
+        <p>Kisebb pentest- és kiberbiztonsági tanácsadó cégeknek, akik több ügyfél javítási folyamatát követik,
+           és szeretnék, ha az ügyfél nem e-mailben, hanem egy közös felületen jelezné a javításokat.</p>
+        <ul class="checks">
+          <li>Ügyfelek és ügyfélprojektek, projektenként elkülönítve</li>
+          <li>Szerepkörök: tanácsadói admin, pentester, belső olvasó, ügyféloldali felhasználó</li>
+          <li>Meghívás egyszer használatos linkkel — a meghívott maga állít jelszót</li>
+          <li>Hozzászólások (belső vagy ügyfélnek látható), bizonyítékcsatolmányok, eseménytörténet</li>
+        </ul>
+      </div>
+      <div>
+        <h2>Ami a jelenlegi verzióban <em>nincs</em></h2>
+        <p>Hogy pontosan tudd, mit kapsz:</p>
+        <ul class="minus">
+          <li>e-mail-értesítések</li>
+          <li>SSO és kétfaktoros belépés</li>
+          <li>Jira / ServiceNow integráció</li>
+          <li>magyar nyelvű felület (a felület angol)</li>
+          <li>független biztonsági audit és tanúsítványok</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="gyik" class="faq">
+    <div class="wrap">
+      <h2>Gyakori kérdések</h2>
+      <details><summary>Hol vannak az adataink?</summary><p>A saját szervereteken: a Threnda self-hosted, Docker Compose-zal és PostgreSQL-lel fut. A bizonyítékfájlok is az adatbázisban vannak, így egy adatbázismentés mindent ment. A Threnda nem küld adatot sehova.</p></details>
+      <details><summary>Az ügyfél látja a belső megjegyzéseinket?</summary><p>Nem. A belsőnek jelölt megjegyzések és fájlok, az importadatok és más ügyfelek projektjei nem érhetők el az ügyfél számára — ezt a szerver ellenőrzi, nem csak a felület rejti el.</p></details>
+      <details><summary>Le tudja zárni az ügyfél a findinget?</summary><p>Nem. Jelezheti, hogy dolgozik rajta vagy kijavította; lezárni csak a pentester tudja, sikeres retest után.</p></details>
+      <details><summary>Mennyi a telepítés?</summary><p>Egy Linux szerveren Dockerrel jellemzően egy óra a HTTPS-sel együtt. A pilot során ebben segítünk.</p></details>
+      <details><summary>Mennyibe kerül?</summary><p>A pilot feltételeit a demó után egyeztetjük.</p></details>
+    </div>
+  </section>
+
+  <section id="demo" class="demo">
+    <div class="wrap two">
+      <div>
+        <h2>Kérj egy 10 perces demót</h2>
+        <p>Végigmegyünk egy ügyfélprojekten: import, felelősök és határidők, ügyféloldali javításjelzés,
+           retest és igazolt lezárás, összesített állapot. Utána beszélünk egy 30 napos pilotról.</p>
+      </div>
+      <form id="demo-form" class="form" novalidate>
+        <label for="f-name">Név</label>
+        <input id="f-name" name="name" required maxlength="120" autocomplete="name">
+        <label for="f-email">E-mail</label>
+        <input id="f-email" name="email" type="email" required maxlength="200" autocomplete="email">
+        <label for="f-company">Cég</label>
+        <input id="f-company" name="company" required maxlength="200" autocomplete="organization">
+        <label for="f-size">Csapatméret</label>
+        <select id="f-size" name="team_size">
+          <option value="">Válassz…</option>
+          <option>1–5 fő</option><option>6–20 fő</option><option>20 fő felett</option>
+        </select>
+        <label for="f-msg">Üzenet (opcionális)</label>
+        <textarea id="f-msg" name="message" rows="3" maxlength="2000"></textarea>
+        <div class="hp" aria-hidden="true"><label for="f-website">Website</label><input id="f-website" name="website" tabindex="-1" autocomplete="off"></div>
+        <label class="consent"><input type="checkbox" name="consent" value="yes" required> Hozzájárulok, hogy a megadott adatokkal a demó egyeztetése céljából felvegyétek velem a kapcsolatot.</label>
+        <button class="btn btn-primary" type="submit">Demót kérek</button>
+        <p id="form-status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>Threnda · self-hosted security finding lifecycle · A képernyőképeken minden ügyfél, rendszer és finding fiktív.</p>
+  </div>
+</footer>
+<script src="config.js"></script>
+<script src="form.js"></script>
+</body>
+</html>

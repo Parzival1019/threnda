@@ -15,10 +15,12 @@ from sqlalchemy.orm import Session
 
 from threnda.app.models.enums import ExposureHistoryEventType, ExposureStatus, SeverityLevel
 from threnda.app.models.exposure import Exposure
+from threnda.app.models.mixins import utcnow
 from threnda.app.models.workspace import Workspace
 from threnda.app.services.exposures import (
     ALLOWED_STATUS_TRANSITIONS,
     InvalidStatusTransitionError,
+    VerifiedClosureRequiresRetestError,
     allowed_next_statuses,
     apply_exposure_update,
     validate_status_transition,
@@ -40,30 +42,33 @@ def _make_exposure(db: Session) -> Exposure:
     return exposure
 
 
-def test_status_change_to_resolved_sets_resolved_at_and_audits(db_session: Session) -> None:
+def test_generic_update_refuses_resolved(db_session: Session) -> None:
+    exposure = _make_exposure(db_session)
+
+    with pytest.raises(VerifiedClosureRequiresRetestError):
+        apply_exposure_update(
+            db_session, exposure, {"status": ExposureStatus.RESOLVED}, note=None, actor="tester"
+        )
+    assert exposure.status == ExposureStatus.OPEN
+
+
+def test_fix_reported_is_its_own_audited_status(db_session: Session) -> None:
     exposure = _make_exposure(db_session)
 
     history = apply_exposure_update(
-        db_session,
-        exposure,
-        {"status": ExposureStatus.RESOLVED},
-        note=None,
-        actor="tester",
+        db_session, exposure, {"status": ExposureStatus.FIX_REPORTED}, note=None, actor="client"
     )
 
-    assert exposure.status == ExposureStatus.RESOLVED
-    assert exposure.resolved_at is not None
-    assert len(history) == 1
-    assert history[0].event_type == ExposureHistoryEventType.RESOLVED
-    assert history[0].actor == "tester"
+    assert exposure.status == ExposureStatus.FIX_REPORTED
+    assert exposure.resolved_at is None
+    assert history[0].event_type == ExposureHistoryEventType.FIX_REPORTED
 
 
 def test_reopening_a_resolved_exposure_clears_resolved_at(db_session: Session) -> None:
     exposure = _make_exposure(db_session)
-    apply_exposure_update(
-        db_session, exposure, {"status": ExposureStatus.RESOLVED}, note=None, actor="tester"
-    )
-    assert exposure.resolved_at is not None
+    exposure.status = ExposureStatus.RESOLVED
+    exposure.resolved_at = utcnow()
+    db_session.flush()
 
     history = apply_exposure_update(
         db_session, exposure, {"status": ExposureStatus.OPEN}, note=None, actor="tester"

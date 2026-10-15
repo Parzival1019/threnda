@@ -4,24 +4,36 @@
 {% block content %}
 {% with current_settings="members" %}{% include "settings/_nav.html" %}{% endwith %}
 <div class="page-header">
-  <h2>Workspace members</h2>
-  <p>Admins manage membership and roles. Analysts operate findings, imports,
-     documents and exports. Viewers are read-only.</p>
+  <h2>Project members</h2>
+  <p><strong>Consultancy admin</strong>: everything, including members. <strong>Pentester</strong>: findings,
+     imports, retests, internal comments, exports. <strong>Viewer</strong>: internal read-only.
+     <strong>Client user</strong>: only this project's findings in the client portal — never internal
+     comments, internal files, imports or other projects.</p>
 </div>
 
-{% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+{% if error %}<div class="error-banner" role="alert">{{ error }}</div>{% endif %}
 
-<div style="max-width:900px;display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">
-  <div style="flex:2;min-width:320px">
+{% if issued %}
+<div class="callout success" role="status" style="max-width:900px;margin-bottom:16px">
+  <strong>Invitation created for {{ issued.invitation.username }}</strong> ({{ issued.invitation.role | role_label }}).
+  Send this one-time link through your own channel (e-mail, chat). It is shown <strong>only now</strong>,
+  works once, and expires in {{ invitation_ttl_hours }} hours. Threnda does not send e-mail.
+  <div class="secret-link" id="invite-link" style="margin-top:8px">{{ issued_url }}</div>
+  <button type="button" class="btn btn-secondary" data-copy-target="invite-link" style="margin-top:8px">Copy link</button>
+</div>
+{% endif %}
+
+<div style="max-width:980px;display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">
+  <div style="flex:2;min-width:340px;display:flex;flex-direction:column;gap:16px">
     <div class="card">
       {% for member in members %}
       <div class="card-row">
-        <span class="k">{{ member.user.username }}</span>
+        <span class="k">{{ member.user.username }}{% if member.user.client_id %} <span class="mono" style="font-size:10px;color:var(--text-muted)">client account</span>{% endif %}</span>
         <form method="post" action="/settings/members/{{ member.user_id }}/role?workspace_id={{ workspace.id }}" style="margin:0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <select name="role" class="compact-select" data-auto-submit>
+          <select name="role" class="compact-select" data-auto-submit aria-label="Role of {{ member.user.username }}">
             {% for r in roles %}
-            <option value="{{ r.value }}" {% if r == member.role %}selected{% endif %}>{{ r.value }}</option>
+            <option value="{{ r.value }}" {% if r == member.role %}selected{% endif %}>{{ r | role_label }}</option>
             {% endfor %}
           </select>
         </form>
@@ -32,29 +44,72 @@
       </div>
       {% endfor %}
     </div>
+
+    {% if invitations %}
+    <div>
+      <div class="section-label">Pending invitations</div>
+      <div class="card" style="margin-top:8px">
+        {% for inv in invitations %}
+        <div class="card-row">
+          <span class="k">{{ inv.username }}</span>
+          <span class="v mono" style="font-size:10.5px">{{ inv.role | role_label }} · expires {{ inv.expires_at | humanize_dt }}</span>
+          <form method="post" action="/settings/invitations/{{ inv.id }}/revoke?workspace_id={{ workspace.id }}" style="margin-left:8px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-ghost">Revoke</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
   </div>
 
-  <div style="flex:1;min-width:280px">
-    <form method="post" action="/settings/members?workspace_id={{ workspace.id }}">
+  <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:16px">
+    <form method="post" action="/settings/invitations?workspace_id={{ workspace.id }}" class="inline-form card" style="padding:14px">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="section-label">Invite a new user</div>
       <div class="field">
-        <label for="member-username">Username</label>
-        <input id="member-username" type="text" name="username" required maxlength="64" placeholder="e.g. jdoe">
+        <label for="inv-username">Username</label>
+        <input id="inv-username" type="text" name="username" required maxlength="64" placeholder="e.g. anna.kovacs">
       </div>
       <div class="field">
-        <label for="member-password">Password (only for a brand-new account)</label>
+        <label for="inv-role">Role</label>
+        <select id="inv-role" name="role">
+          {% for r in roles %}<option value="{{ r.value }}" {% if r.value == 'client' %}selected{% endif %}>{{ r | role_label }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">Create invitation link</button>
+      <span class="mono" style="font-size:10.5px;color:var(--text-muted)">the invitee chooses their own password</span>
+    </form>
+
+    <form method="post" action="/settings/members?workspace_id={{ workspace.id }}" class="inline-form card" style="padding:14px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="section-label">Add an existing account</div>
+      <div class="field">
+        <label for="member-username">Username</label>
+        <input id="member-username" type="text" name="username" required maxlength="64">
+      </div>
+      <div class="field">
+        <label for="member-password">Password (only to create a brand-new account directly)</label>
         <input id="member-password" type="password" name="password" maxlength="256" autocomplete="new-password">
       </div>
       <div class="field">
         <label for="member-role">Role</label>
         <select id="member-role" name="role">
-          {% for r in roles %}
-          <option value="{{ r.value }}">{{ r.value }}</option>
-          {% endfor %}
+          {% for r in roles %}<option value="{{ r.value }}">{{ r | role_label }}</option>{% endfor %}
         </select>
       </div>
-      <button type="submit" class="btn btn-primary">Add member</button>
+      <button type="submit" class="btn btn-secondary">Add member</button>
     </form>
+
+    {% if demo_mode and is_org_admin %}
+    <form method="post" action="/settings/demo-reset?workspace_id={{ workspace.id }}" class="inline-form card" style="padding:14px;border-color:var(--high)">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="section-label">Demo instance</div>
+      <p style="font-size:12px;margin:0">Deletes everything on this demo instance and reloads the fictional demo data. You will be logged out.</p>
+      <button type="submit" class="btn btn-danger">Reset demo data</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

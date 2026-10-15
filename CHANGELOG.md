@@ -4,6 +4,37 @@ All notable changes to Threnda Community are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project uses semantic versioning.
 
+## [Unreleased] — pilot readiness
+
+### Added
+
+- Clients and client projects; consultancy admins (`is_org_admin`).
+- Client user role bound to one client, a client portal, and server-side
+  isolation of findings, comments, files, history, reports and exports.
+- One-time invitation links (hashed, expiring, revocable, redacted from logs).
+- Manual finding entry and editing (title, description, severity, affected
+  system, remediation, owner, due date) with full history.
+- Pentest findings CSV template: downloadable template, all-or-nothing
+  validation with a line/column error list, import summary, documented
+  identity rules so re-imports never duplicate.
+- "Fixed — awaiting retest" status, retests, and verified closure that is
+  only possible through a passed retest; failed retests reopen.
+- Comments (internal or client-visible) and evidence attachments (type and
+  size limits, stored in the database, audited downloads).
+- All-projects overview, per-project status page, printable client status
+  report; CSV export gains affected system and description.
+- Fictional, resettable demo dataset (`threnda demo reset`,
+  `docker-compose.demo.yml`) guarded by demo mode and a database marker.
+- `threnda backup` / `threnda restore` for SQLite.
+- Hungarian pilot/sales pack and a landing page under `docs/pilot/` and `landing/`.
+
+### Changed
+
+- A finding can no longer be set to `resolved` by a plain status change
+  (HTTP 409); use a retest.
+- Creating workspaces/projects requires a consultancy admin.
+- A user with no project is sent to `/overview` instead of `/workspaces/new`.
+
 ## [0.1.0] - 2026-09-13
 
 ### Added

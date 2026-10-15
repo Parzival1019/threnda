@@ -57,6 +57,7 @@ class SourceType(enum.StrEnum):
     JSON = "json"
     SARIF = "sarif"
     PENTEST_REPORT = "pentest_report"
+    MANUAL = "manual"
     TRIVY = "trivy"
     NUCLEI = "nuclei"
     SEMGREP = "semgrep"
@@ -117,11 +118,19 @@ class ExposureStatus(enum.StrEnum):
     See "FINDING LIFECYCLE" in docs/community-v0.1-spec.md — the statuses
     are defined there against findings conceptually, but users work
     exposures, so the status lives on ``Exposure``.
+
+    ``FIX_REPORTED`` ("fixed, awaiting retest") and ``RESOLVED`` ("verified
+    closed") are deliberately separate: a client saying "we fixed it", or a
+    finding disappearing from a later import, never by itself closes
+    anything. ``RESOLVED`` is only reachable through a recorded retest by a
+    pentester/admin — see docs/finding-lifecycle.md and
+    ``threnda.app.services.retests``.
     """
 
     OPEN = "open"
     ACKNOWLEDGED = "acknowledged"
     IN_PROGRESS = "in_progress"
+    FIX_REPORTED = "fix_reported"
     RISK_ACCEPTED = "risk_accepted"
     RESOLVED = "resolved"
 
@@ -138,6 +147,13 @@ class ExposureHistoryEventType(enum.StrEnum):
     REOPENED = "reopened"
     RESOLVED = "resolved"
     NOTE_ADDED = "note_added"
+    CREATED = "created"
+    DETAILS_CHANGED = "details_changed"
+    FIX_REPORTED = "fix_reported"
+    RETEST_PASSED = "retest_passed"
+    RETEST_FAILED = "retest_failed"
+    COMMENT_ADDED = "comment_added"
+    ATTACHMENT_ADDED = "attachment_added"
 
 
 class PossibleDuplicateStatus(enum.StrEnum):
@@ -183,6 +199,14 @@ class WorkspaceRole(enum.StrEnum):
     ADMIN = "admin"
     ANALYST = "analyst"
     VIEWER = "viewer"
+    # The client-side user of a consultancy engagement. Deliberately the
+    # *lowest* role in the hierarchy (see
+    # ``threnda.app.services.memberships``): every pre-existing route that
+    # requires ``viewer`` therefore refuses it automatically, and a client
+    # user only reaches the client portal and the handful of API routes that
+    # explicitly opt in with ``require_client`` — see docs/security.md,
+    # "Client users".
+    CLIENT = "client"
 
 
 class AuditEventType(enum.StrEnum):
@@ -207,6 +231,14 @@ class AuditEventType(enum.StrEnum):
     WEBHOOK_DELETED = "webhook_deleted"
     WEBHOOK_DELIVERY_TRIGGERED = "webhook_delivery_triggered"
     EXPORT_DOWNLOADED = "export_downloaded"
+    CLIENT_CREATED = "client_created"
+    PROJECT_CREATED = "project_created"
+    INVITATION_CREATED = "invitation_created"
+    INVITATION_ACCEPTED = "invitation_accepted"
+    INVITATION_REVOKED = "invitation_revoked"
+    ATTACHMENT_DOWNLOADED = "attachment_downloaded"
+    REPORT_VIEWED = "report_viewed"
+    DEMO_RESET = "demo_reset"
 
 
 class CandidateFindingStatus(enum.StrEnum):
@@ -220,3 +252,10 @@ class CandidateFindingStatus(enum.StrEnum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+
+
+class RetestOutcome(enum.StrEnum):
+    """Result a pentester records for one retest of an ``Exposure``."""
+
+    PASSED = "passed"
+    FAILED = "failed"

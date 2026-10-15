@@ -20,5 +20,10 @@ if [ -n "${THRENDA_BOOTSTRAP_ADMIN_USERNAME:-}" ] && [ -n "${THRENDA_BOOTSTRAP_A
     threnda bootstrap-admin || echo "threnda-entrypoint: bootstrap-admin did not create an account (see above) — continuing."
 fi
 
+if [ "${THRENDA_DEMO_MODE:-false}" = "true" ]; then
+    echo "threnda-entrypoint: demo mode — loading fictional demo data if the database is empty..."
+    threnda demo reset --if-empty
+fi
+
 echo "threnda-entrypoint: starting application..."
 exec "$@"

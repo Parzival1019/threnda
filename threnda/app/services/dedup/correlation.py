@@ -38,13 +38,14 @@ value anything queries on.
 
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from sqlalchemy import insert, or_, select
 from sqlalchemy.orm import Session
 
-from threnda.app.models.enums import ExposureHistoryEventType
+from threnda.app.models.enums import ExposureHistoryEventType, ExposureStatus
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.exposure_history import ExposureHistory
 from threnda.app.models.finding import Finding
+from threnda.app.models.mixins import utcnow
 from threnda.app.models.possible_duplicate import PossibleDuplicate
 from threnda.app.services.dedup.similarity import title_similarity
 
@@ -194,17 +195,34 @@ def create_standalone_exposure(db: Session, finding: Finding) -> Exposure:
     is *not* a duplicate still needs an exposure to appear in the normal
     queue, exactly as if no candidate had ever been found for it.
     """
-    exposure = Exposure(
-        workspace_id=finding.workspace_id,
-        canonical_fingerprint=finding.fingerprint,
-        title=finding.title,
-        description=finding.description,
-        severity=finding.severity,
-        first_seen=finding.first_seen,
-        last_seen=finding.last_seen,
-    )
-    db.add(exposure)
-    db.flush()
+    # A Core INSERT naming only these columns, not ``db.add(Exposure(...))``:
+    # the ORM always renders *every* mapped column into its INSERT, and this
+    # function also runs inside migration 32832b96f2c3's backfill — at a
+    # point in the upgrade sequence where later columns (e.g.
+    # ``affected_system``) don't exist yet. Defaults that the ORM would
+    # normally apply are passed explicitly.
+    now = utcnow()
+    exposure_id = db.execute(
+        insert(Exposure)
+        .values(
+            workspace_id=finding.workspace_id,
+            canonical_fingerprint=finding.fingerprint,
+            title=finding.title,
+            description=finding.description,
+            severity=finding.severity,
+            risk_score=0,
+            status=ExposureStatus.OPEN,
+            acknowledged=False,
+            first_seen=finding.first_seen,
+            last_seen=finding.last_seen,
+            created_at=now,
+            updated_at=now,
+        )
+        .returning(Exposure.id)
+    ).scalar_one()
+    exposure = db.get(Exposure, exposure_id)
+    if exposure is None:  # pragma: no cover - just inserted
+        raise RuntimeError("create_standalone_exposure: inserted exposure vanished")
     finding.exposure_id = exposure.id
     # The session isn't autoflush (see threnda.app.db.session) — flush so
     # a caller that immediately reads `exposure.findings` (e.g. risk

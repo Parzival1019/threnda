@@ -1,0 +1,57 @@
+<div class="report">
+  <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+    <div style="flex:1">
+      <div class="mono" style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)">Remediation status report</div>
+      <h1>{% if report.workspace.client %}{{ report.workspace.client.name }} — {% endif %}{{ report.workspace.name }}</h1>
+      <div class="sub">Generated {{ report.generated_at | humanize_dt }} UTC{% if report.workspace.description %} · {{ report.workspace.description }}{% endif %}</div>
+    </div>
+    <div class="no-print" style="display:flex;gap:8px">
+      <button type="button" class="btn btn-secondary" data-print>Print / save as PDF</button>
+      {% if export_url %}<a class="btn btn-secondary" href="{{ export_url }}">Download CSV</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="stat-grid" style="margin-top:18px">
+    <div class="stat-tile"><div class="label">Findings</div><div class="value">{{ report.total }}</div></div>
+    <div class="stat-tile"><div class="label">Still open</div><div class="value">{{ report.active }}</div></div>
+    <div class="stat-tile {{ 'bad' if report.critical_active else '' }}"><div class="label">Critical open</div><div class="value">{{ report.critical_active }}</div></div>
+    <div class="stat-tile {{ 'warn' if report.overdue else '' }}"><div class="label">Overdue</div><div class="value">{{ report.overdue }}</div></div>
+    <div class="stat-tile"><div class="label">Awaiting retest</div><div class="value">{{ report.awaiting_retest }}</div></div>
+    <div class="stat-tile good"><div class="label">Verified closed</div><div class="value">{{ report.verified_closed }}</div></div>
+    <div class="stat-tile"><div class="label">Risk accepted</div><div class="value">{{ report.risk_accepted }}</div></div>
+  </div>
+
+  <h3 style="margin-top:24px;font-size:14px">By severity and status</h3>
+  <table class="data-table">
+    <thead><tr><th>Severity</th>{% for st in status_order %}<th class="num">{{ st | status_label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for sev in severity_order %}
+      <tr><td>{{ sev.value }}</td>{% for st in status_order %}<td class="num">{{ report.matrix[sev][st] or "·" }}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:24px;font-size:14px">Findings</h3>
+  <table class="data-table">
+    <thead><tr><th>ID</th><th>Finding</th><th>Severity</th><th>Affected system</th><th>Status</th><th>Owner</th><th>Due</th><th>Last retest</th></tr></thead>
+    <tbody>
+    {% for row in report.rows %}
+      {% set e = row.exposure %}
+      <tr>
+        <td class="mono">{% if finding_link %}<a href="{{ finding_link(e) }}">EXP-{{ e.id }}</a>{% else %}EXP-{{ e.id }}{% endif %}</td>
+        <td>{{ e.title }}</td>
+        <td>{{ e.severity.value }}</td>
+        <td>{{ e.affected_system or "—" }}</td>
+        <td><span class="status-pill {{ e.status | status_class }}">{{ e.status | status_label }}</span></td>
+        <td>{{ e.owner or "—" }}</td>
+        <td class="{{ 'bad' if row.overdue else '' }}">{{ e.remediation_target_date.isoformat() if e.remediation_target_date else "—" }}{% if row.overdue %} (overdue){% endif %}</td>
+        <td>{% if row.last_retest %}{{ row.last_retest.outcome.value }} · {{ row.last_retest.performed_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" style="color:var(--text-muted)">No findings in this project yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="sub" style="margin-top:16px">"Fixed — awaiting retest" means the client reported a fix that has not been verified yet.
+     Only "Verified closed" findings were confirmed fixed by a retest.</p>
+</div>

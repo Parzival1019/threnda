@@ -8,7 +8,7 @@
     <select name="status" aria-label="Filter by status">
       <option value="">All statuses</option>
       {% for s in statuses %}
-      <option value="{{ s.value }}" {% if status == s %}selected{% endif %}>{{ s.value.replace('_', ' ') }}</option>
+      <option value="{{ s.value }}" {% if status == s %}selected{% endif %}>{{ s | status_label }}</option>
       {% endfor %}
     </select>
     <select name="severity" aria-label="Filter by severity">
@@ -22,6 +22,9 @@
       <option value="age" {% if sort == 'age' %}selected{% endif %}>Sort: oldest first</option>
       <option value="last_seen" {% if sort == 'last_seen' %}selected{% endif %}>Sort: last seen</option>
     </select>
+    <label class="mono" style="font-size:10.5px;color:var(--text-secondary);display:flex;gap:4px;align-items:center">
+      <input type="checkbox" name="overdue" value="true" {% if overdue %}checked{% endif %}
+             hx-get="/exposures" hx-target="#queue-inner" hx-swap="outerHTML" hx-push-url="true" hx-include="#filters-form, #search-input"> overdue only</label>
     <span class="mono" style="font-size:10.5px;color:var(--text-muted)">risk</span>
     <input type="number" name="min_risk" value="{{ min_risk if min_risk is not none else '' }}"
            min="0" max="100" placeholder="min" aria-label="Minimum risk score"
@@ -37,15 +40,15 @@
   </div>
 </form>
 
-<form id="bulk-form" method="post" action="/exposures/bulk" style="display:flex;flex-direction:column;flex:1;min-height:0">
+<form id="bulk-form" method="post" action="/exposures/bulk?workspace_id={{ workspace.id }}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="return_qs" value="{{ request.url.query }}">
 
   <div class="bulk-bar" id="bulk-bar" hidden>
     <span class="bulk-count mono">0 selected</span>
-    <button type="submit" formaction="/exposures/bulk?action=acknowledge" class="btn btn-secondary">Acknowledge</button>
-    <button type="submit" formaction="/exposures/bulk?action=in_progress" class="btn btn-secondary">Mark in progress</button>
-    <button type="submit" formaction="/exposures/bulk?action=accept_risk" class="btn btn-secondary">Accept risk</button>
+    <button type="submit" formaction="/exposures/bulk?action=acknowledge&workspace_id={{ workspace.id }}" class="btn btn-secondary">Acknowledge</button>
+    <button type="submit" formaction="/exposures/bulk?action=in_progress&workspace_id={{ workspace.id }}" class="btn btn-secondary">Mark in progress</button>
+    <button type="submit" formaction="/exposures/bulk?action=accept_risk&workspace_id={{ workspace.id }}" class="btn btn-secondary">Accept risk</button>
   </div>
 
   <div class="table-head grid-row">

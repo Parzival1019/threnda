@@ -13,18 +13,20 @@ docs/deployment.md before exposing an instance any further.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 
 from threnda.app import __version__
 from threnda.app.api.v1.router import api_router
 from threnda.app.core.config import Settings, get_settings
+from threnda.app.core.log_redaction import install_access_log_redaction
 from threnda.app.core.middleware import MaxBodySizeMiddleware, SecurityHeadersMiddleware
 from threnda.app.core.startup_checks import validate_production_readiness
 from threnda.app.db.session import create_engine_from_settings, create_sessionmaker
+from threnda.app.web.cookies import WORKSPACE_COOKIE_NAME, cookie_secure
 from threnda.app.web.errors import register_web_exception_handlers
 from threnda.app.web.resources import web_resource_dir
 from threnda.app.web.router import web_router
@@ -51,6 +53,7 @@ def create_app(
     """
     resolved_settings = settings or get_settings()
     validate_production_readiness(resolved_settings)
+    install_access_log_redaction()
     engine = create_engine_from_settings(resolved_settings)
 
     @asynccontextmanager
@@ -79,6 +82,24 @@ def create_app(
     app.include_router(web_router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     register_web_exception_handlers(app)
+
+    @app.middleware("http")
+    async def remember_workspace_cookie(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Persist the project a page was explicitly opened for (see
+        ``threnda.app.web.deps.get_current_membership``)."""
+        response = await call_next(request)
+        workspace_id = getattr(request.state, "remember_workspace_id", None)
+        if workspace_id is not None:
+            response.set_cookie(
+                WORKSPACE_COOKIE_NAME,
+                str(workspace_id),
+                httponly=True,
+                samesite="strict",
+                secure=cookie_secure(resolved_settings, request),
+            )
+        return response
 
     return app
 

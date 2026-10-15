@@ -145,6 +145,55 @@ vanilla-JS file are both served from `/static`) and `style-src 'self'
 places — a narrower risk than inline script, not worth a template-wide
 refactor for this milestone).
 
+## Consultancy admins
+
+`User.is_org_admin` marks a consultancy-level admin who may create clients
+and projects (`/clients`, `POST /api/v1/clients`, `POST /api/v1/workspaces`).
+It grants no access to any project's data: that still comes only from a
+`WorkspaceMembership` row (the "no superuser" rule above is unchanged).
+Creating a project makes its creator the project's first admin.
+
+## Client users
+
+A client-side account has `User.client_id` set and can only hold the
+`client` role, and only on projects whose `Workspace.client_id` matches —
+enforced in `threnda.app.services.memberships.validate_membership_binding`,
+the single write path for memberships (API, web, invitations). A consultancy
+account can never be given the `client` role.
+
+`client` is the lowest role in the hierarchy, below `viewer`, so every
+pre-existing route gated on `viewer`+ refuses it. The routes that accept it
+opt in explicitly with `require_client` (`GET /api/v1/exposures[...]`,
+history, comments, attachments, attachment download, `client-status`) and
+filter content through `threnda.app.services.collaboration`'s `visible_*`
+helpers: no internal comments, no internal attachments, no internal notes or
+import bookkeeping in the history. The consultancy web UI never resolves a
+client membership (`get_current_membership` skips them) and redirects
+client-only users to `/portal`; every portal route requires a `client`
+membership in the requested project and answers `404` otherwise — the same
+answer as for a project that doesn't exist.
+
+Isolation is covered by `tests/test_pilot_isolation.py`: cross-client access
+to findings, comments, attachments (list and direct download by id),
+history, status changes, portal pages, reports and exports; consultancy
+API/web surfaces; internal-content filtering; membership binding;
+closure permissions; attachment type/size checks; unauthenticated access.
+
+## Invitations
+
+`POST /api/v1/invitations` / **Members → Invite** creates a one-time link
+(`/invite/<token>`, 256-bit `secrets.token_urlsafe`). Only the SHA-256 hash
+of the token is stored; the link is shown once to the inviting admin and is
+never stored, logged or e-mailed by Threnda (there is no outbound e-mail).
+It works once, expires after `THRENDA_INVITATION_TTL_HOURS` (default 72),
+can be revoked, and a newer invitation for the same username/project revokes
+older ones. The invitee chooses their own password (same policy as every
+account). Accepting a `client` invitation binds the new account to the
+project's client. The invite page sends `Referrer-Policy: no-referrer`, and
+uvicorn access-log lines have the token replaced with `[redacted]`
+(`threnda.app.core.log_redaction`). Created/accepted/revoked invitations are
+audited (without the token).
+
 ## Authorization
 
 Every workspace-scoped API and web route depends on
@@ -187,6 +236,13 @@ The audit log is workspace-scoped and admin-only to read
 unknown-username login attempt) have no workspace and are recorded with
 `workspace_id=NULL`; they are not currently surfaced in the per-workspace UI
 (a documented limitation, not a data-loss — the row exists in the table).
+
+## Evidence attachments
+
+See [attachments.md](attachments.md): allowlisted types verified against
+file content, per-file size cap, sanitised names never used as paths,
+always served as a download with `nosniff` and a sandbox CSP, scoped to the
+project and to client visibility, downloads audited.
 
 ## Uploads
 

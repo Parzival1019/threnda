@@ -78,7 +78,7 @@ def test_editing_linked_asset_updates_score_and_syncs_the_row(
 
     panel = client.get(f"/exposures/{exposure.id}/panel?tab=risk")
     token = extract_csrf(panel.text)
-    assert f'/assets/{asset.id}"' in panel.text
+    assert f"/assets/{asset.id}?workspace_id=" in panel.text
 
     response = client.post(
         f"/assets/{asset.id}",
@@ -145,14 +145,19 @@ def test_status_select_only_offers_allowed_transitions(
     token = extract_csrf(panel.text)
     client.post(
         f"/exposures/{exposure.id}",
-        data={"csrf_token": token, "status": "resolved", "tab": "remediation"},
+        data={"csrf_token": token, "status": "risk_accepted", "tab": "remediation"},
     )
 
     panel_after = client.get(f"/exposures/{exposure.id}/panel?tab=remediation")
-    options = re.findall(r'<option value="([a-z_]+)"', panel_after.text)
-    # RESOLVED's only allowed next status is OPEN — the select must not
-    # offer acknowledged/in_progress/risk_accepted.
-    assert set(options) == {"resolved", "open"}
+    status_select = re.search(
+        r'<select id="status-select".*?</select>', panel_after.text, flags=re.DOTALL
+    )
+    assert status_select is not None
+    options = re.findall(r'<option value="([a-z_]+)"', status_select.group(0))
+    # RISK_ACCEPTED's only allowed next status is OPEN — the select must not
+    # offer acknowledged/in_progress/fix_reported, and never "resolved"
+    # (verified closure goes through the retest form).
+    assert set(options) == {"risk_accepted", "open"}
 
 
 def test_invalid_transition_via_the_panel_shows_an_error_not_a_500(
@@ -194,7 +199,7 @@ def test_bulk_action_skips_an_exposure_it_cannot_transition(
     token = extract_csrf(panel.text)
     client.post(
         f"/exposures/{exposure.id}",
-        data={"csrf_token": token, "status": "resolved", "tab": "remediation"},
+        data={"csrf_token": token, "status": "risk_accepted", "tab": "remediation"},
     )
 
     queue = client.get("/exposures", headers={"HX-Request": "true"})
@@ -212,7 +217,7 @@ def test_bulk_action_skips_an_exposure_it_cannot_transition(
     assert response.status_code == 303  # the batch itself still succeeds
 
     db_session.refresh(exposure)
-    assert exposure.status.value == "resolved"  # untouched, not crashed
+    assert exposure.status.value == "risk_accepted"  # untouched, not crashed
 
 
 def test_risk_range_filter_narrows_the_queue(client: TestClient, db_session: Session) -> None:

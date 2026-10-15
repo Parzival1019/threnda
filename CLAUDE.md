@@ -254,6 +254,15 @@ same codebase remains available as Community Server for small teams. The app is
 not a public binary until it has a product icon, real Developer ID signing,
 Apple notarization and clean-machine verification; see `docs/desktop.md`.
 
+Milestone 10 (consultancy pilot readiness, branch `feat/pilot-readiness`)
+adds clients/projects, a client role and portal, invitations, retests with
+verified closure, comments/attachments, the findings CSV template, reports,
+a guarded demo dataset and SQLite backup/restore — see
+docs/finding-lifecycle.md and docs/pilot/ (Hungarian handover and sales
+pack). Verified closure (`resolved`) must only ever be set by
+`threnda.app.services.retests.record_retest`; client-visible reads must go
+through `threnda.app.services.collaboration`'s `visible_*` helpers.
+
 This remains pre-alpha and has not had an independent security review —
 see docs/security.md, "What this is not" — but the web UI and JSON API are
 no longer unauthenticated: every workspace-scoped route requires a real

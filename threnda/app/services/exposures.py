@@ -12,10 +12,10 @@ from typing import TypedDict
 
 from sqlalchemy.orm import Session
 
-from threnda.app.models.enums import ExposureHistoryEventType, ExposureStatus
+from threnda.app.models.enums import ExposureHistoryEventType, ExposureStatus, SeverityLevel
 from threnda.app.models.exposure import Exposure
 from threnda.app.models.exposure_history import ExposureHistory
-from threnda.app.models.mixins import utcnow
+from threnda.app.services.risk_scoring import recompute_and_persist_risk_score
 
 
 class ExposureChanges(TypedDict, total=False):
@@ -31,9 +31,13 @@ class ExposureChanges(TypedDict, total=False):
     acknowledged: bool
     remediation_target_date: date | None
     remediation: str | None
+    title: str
+    description: str | None
+    severity: SeverityLevel
+    affected_system: str | None
 
 
-class InvalidStatusTransitionError(Exception):
+class InvalidStatusTransitionError(Exception):  # noqa: N818 - established public name
     """Raised when an update would move ``status`` along a forbidden edge.
 
     See docs/risk-scoring.md's sibling doc, docs/implementation-plan.md
@@ -50,32 +54,69 @@ class InvalidStatusTransitionError(Exception):
         )
 
 
-# The canonical path is OPEN -> ACKNOWLEDGED -> IN_PROGRESS ->
-# RESOLVED/RISK_ACCEPTED, but every state before a closed one may also
-# jump straight to RESOLVED/RISK_ACCEPTED (skipping intermediate triage
-# steps is a real, common workflow — and forbidding it would regress the
-# web UI's existing bulk "mark in progress"/"accept risk" actions, both of
-# which apply to plain OPEN exposures). What the graph does forbid: moving
-# *backward* between active states without an explicit reopen
-# (ACKNOWLEDGED/IN_PROGRESS never go back to OPEN directly), and treating
-# a closed state as anything other than a dead end you explicitly reopen —
-# the only edge out of RESOLVED or RISK_ACCEPTED is back to OPEN.
+class VerifiedClosureRequiresRetestError(InvalidStatusTransitionError):
+    """Raised when a plain status update asks for ``RESOLVED``.
+
+    ``RESOLVED`` means *verified closed*: it is only ever reached through a
+    recorded retest (``threnda.app.services.retests.record_retest``), never
+    through a generic status change — not by a client saying "fixed", not
+    by a finding disappearing from an import, and not by a pentester simply
+    picking "resolved" from a list. See docs/finding-lifecycle.md.
+    """
+
+    def __init__(self, current: ExposureStatus) -> None:
+        self.current = current
+        self.requested = ExposureStatus.RESOLVED
+        Exception.__init__(
+            self,
+            "Verified closure requires a recorded retest — record a passed retest "
+            "instead of setting the status to 'resolved' directly.",
+        )
+
+
+# Lifecycle (docs/finding-lifecycle.md):
+#
+#   OPEN -> ACKNOWLEDGED -> IN_PROGRESS -> FIX_REPORTED --retest passed--> RESOLVED
+#                                                      \--retest failed--> OPEN
+#
+# Every active state may skip ahead to FIX_REPORTED or RISK_ACCEPTED
+# (skipping triage steps is a real, common workflow). FIX_REPORTED may go
+# back to IN_PROGRESS ("the fix wasn't complete after all") without a
+# retest. What the graph forbids: moving backward to OPEN between active
+# states without a retest/reopen, and *any* generic edge into RESOLVED —
+# that edge exists only inside the retest service. The only edge out of
+# RESOLVED or RISK_ACCEPTED is an explicit reopen back to OPEN.
 ALLOWED_STATUS_TRANSITIONS: dict[ExposureStatus, frozenset[ExposureStatus]] = {
     ExposureStatus.OPEN: frozenset(
         {
             ExposureStatus.ACKNOWLEDGED,
             ExposureStatus.IN_PROGRESS,
+            ExposureStatus.FIX_REPORTED,
             ExposureStatus.RISK_ACCEPTED,
-            ExposureStatus.RESOLVED,
         }
     ),
     ExposureStatus.ACKNOWLEDGED: frozenset(
-        {ExposureStatus.IN_PROGRESS, ExposureStatus.RISK_ACCEPTED, ExposureStatus.RESOLVED}
+        {ExposureStatus.IN_PROGRESS, ExposureStatus.FIX_REPORTED, ExposureStatus.RISK_ACCEPTED}
     ),
-    ExposureStatus.IN_PROGRESS: frozenset({ExposureStatus.RISK_ACCEPTED, ExposureStatus.RESOLVED}),
+    ExposureStatus.IN_PROGRESS: frozenset(
+        {ExposureStatus.FIX_REPORTED, ExposureStatus.RISK_ACCEPTED}
+    ),
+    ExposureStatus.FIX_REPORTED: frozenset(
+        {ExposureStatus.IN_PROGRESS, ExposureStatus.RISK_ACCEPTED}
+    ),
     ExposureStatus.RISK_ACCEPTED: frozenset({ExposureStatus.OPEN}),
     ExposureStatus.RESOLVED: frozenset({ExposureStatus.OPEN}),
 }
+
+#: Statuses that still need work — everything except the two closed ones.
+ACTIVE_STATUSES = frozenset(
+    {
+        ExposureStatus.OPEN,
+        ExposureStatus.ACKNOWLEDGED,
+        ExposureStatus.IN_PROGRESS,
+        ExposureStatus.FIX_REPORTED,
+    }
+)
 
 #: Statuses a closed exposure reopens from — both audit as REOPENED, since
 #: the graph above guarantees OPEN is the only edge out of either.
@@ -90,6 +131,8 @@ def allowed_next_statuses(current: ExposureStatus) -> frozenset[ExposureStatus]:
 
 
 def validate_status_transition(current: ExposureStatus, requested: ExposureStatus) -> None:
+    if requested == ExposureStatus.RESOLVED:
+        raise VerifiedClosureRequiresRetestError(current)
     if requested not in allowed_next_statuses(current):
         raise InvalidStatusTransitionError(current, requested)
 
@@ -115,9 +158,8 @@ def apply_exposure_update(
         new_status = changes["status"]
         validate_status_transition(previous_status, new_status)
         event_type = ExposureHistoryEventType.STATUS_CHANGED
-        if new_status == ExposureStatus.RESOLVED:
-            exposure.resolved_at = utcnow()
-            event_type = ExposureHistoryEventType.RESOLVED
+        if new_status == ExposureStatus.FIX_REPORTED:
+            event_type = ExposureHistoryEventType.FIX_REPORTED
         elif previous_status in _CLOSED_STATUSES:
             exposure.resolved_at = None
             event_type = ExposureHistoryEventType.REOPENED
@@ -192,6 +234,29 @@ def apply_exposure_update(
         )
         exposure.remediation = new_remediation
 
+    # Finding details (manual findings, or correcting an imported title).
+    # One DETAILS_CHANGED row per field, value prefixed with the field name
+    # so the timeline reads "severity: high -> critical".
+    for field in ("title", "description", "severity", "affected_system"):
+        if field not in changes:
+            continue
+        new_value = changes[field]
+        old_value = getattr(exposure, field)
+        if new_value == old_value:
+            continue
+        if field == "title" and not new_value:
+            raise ValueError("title cannot be empty")
+        history.append(
+            ExposureHistory(
+                exposure=exposure,
+                event_type=ExposureHistoryEventType.DETAILS_CHANGED,
+                previous_value=f"{field}: {_display(old_value)}",
+                new_value=f"{field}: {_display(new_value)}",
+                actor=actor,
+            )
+        )
+        setattr(exposure, field, new_value)
+
     if note:
         history.append(
             ExposureHistory(
@@ -205,5 +270,21 @@ def apply_exposure_update(
 
     db.add_all(history)
     db.flush()
+    if "severity" in changes and any(
+        h.event_type == ExposureHistoryEventType.DETAILS_CHANGED
+        and (h.new_value or "").startswith("severity:")
+        for h in history
+    ):
+        # Severity is a risk-score input; keep the persisted score current.
+        recompute_and_persist_risk_score(db, exposure)
     db.refresh(exposure)
     return history
+
+
+def _display(value: object) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, SeverityLevel):
+        return value.value
+    text = str(value)
+    return text if len(text) <= 200 else text[:197] + "..."

@@ -15,9 +15,11 @@ One row/object per exposure, in this exact, stable column order:
 | `id` | integer | |
 | `canonical_fingerprint` | string | |
 | `title` | string | |
+| `affected_system` | string or null | the finding's affected system |
+| `description` | string or null | |
 | `severity` | string | one of `informational`/`low`/`medium`/`high`/`critical` |
 | `risk_score` | integer | 0–100, the persisted list-view value (see [risk-scoring.md](risk-scoring.md) for the one staleness caveat this shares with the findings queue) |
-| `status` | string | one of `open`/`acknowledged`/`in_progress`/`risk_accepted`/`resolved` |
+| `status` | string | one of `open`/`acknowledged`/`in_progress`/`fix_reported` (fixed, awaiting retest)/`risk_accepted`/`resolved` (verified closed by a retest) |
 | `owner` | string or null | |
 | `acknowledged` | boolean | |
 | `remediation_target_date` | ISO date or null | |

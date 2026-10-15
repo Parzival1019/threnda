@@ -12,6 +12,8 @@ from threnda.app.web.routes import (
     documents,
     exposures,
     imports,
+    portal,
+    projects,
     review,
     sources,
     workspaces,
@@ -26,6 +28,8 @@ web_router.include_router(auth.router)
 web_router.include_router(workspaces.router)
 web_router.include_router(settings_routes.router)
 web_router.include_router(dashboard.router)
+web_router.include_router(projects.router)
+web_router.include_router(portal.router)
 web_router.include_router(exposures.router)
 web_router.include_router(imports.router)
 web_router.include_router(sources.router)
