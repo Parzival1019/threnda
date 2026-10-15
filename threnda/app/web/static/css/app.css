@@ -537,14 +537,14 @@ textarea {
 
 .grid-row {
   display: grid;
-  grid-template-columns: 24px 44px minmax(0, 2.6fr) minmax(0, 1.2fr) 48px minmax(0, 1fr) 90px 70px
-    minmax(0, 1fr) 92px 64px;
+  grid-template-columns: 24px 44px minmax(0, 2.6fr) minmax(0, 1.2fr) 48px minmax(0, 1fr) 90px 40px
+    minmax(0, 1fr) 150px 44px;
   align-items: center;
   gap: 10px;
 }
 @media (max-width: 900px) {
   .grid-row {
-    grid-template-columns: 24px 44px minmax(0, 2fr) minmax(0, 1fr) 48px 92px 64px;
+    grid-template-columns: 24px 44px minmax(0, 2fr) minmax(0, 1fr) 48px 150px 44px;
   }
   .grid-row .col-wide {
     display: none;
@@ -1366,4 +1366,45 @@ a.stat-tile {
 }
 a.stat-tile:hover {
   background: var(--bg-hover);
+}
+
+/* Filter controls (also used by the client portal) — explicit dark styling
+   so native selects never render light-on-light. */
+.filter-bar select,
+.filter-bar input[type="text"] {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  font: 400 11px var(--font-mono);
+}
+.filter-bar select option {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.status-pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-header .meta-line {
+  margin-top: 6px;
+  font: 400 11px var(--font-mono);
+  color: var(--text-secondary);
+}
+.inline-form textarea,
+.inline-form input[type="text"],
+.inline-form input[type="date"],
+.inline-form input[type="file"] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font: 400 12.5px var(--font-sans);
+}
+.data-table td.mono {
+  white-space: nowrap;
 }

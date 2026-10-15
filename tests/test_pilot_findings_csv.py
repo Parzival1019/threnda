@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from conftest import REPO_ROOT
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -193,3 +194,18 @@ def test_client_and_viewer_cannot_import(client: TestClient, project: int) -> No
             files={"file": ("f.csv", TEMPLATE_CSV.encode())},
         ).status_code
         assert status == 403
+
+
+def test_demo_files_behave_as_the_demo_script_says() -> None:
+    pilot = REPO_ROOT / "demo-data" / "pilot"
+    rows, problems = parse_template_csv((pilot / "harbor-webapp-pentest.csv").read_bytes())
+    assert (len(rows), problems) == (7, [])
+    rows, problems = parse_template_csv((pilot / "harbor-webapp-pentest-v2.csv").read_bytes())
+    assert (len(rows), problems) == (7, [])
+    _, problems = parse_template_csv((pilot / "harbor-broken-example.csv").read_bytes())
+    assert [(p.line, p.column) for p in problems] == [
+        (1, "ownr"),
+        (2, "due_date"),
+        (3, "title"),
+        (4, "severity"),
+    ]

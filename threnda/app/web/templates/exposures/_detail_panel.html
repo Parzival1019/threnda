@@ -8,8 +8,9 @@
        hx-get="/exposures/panel/close?workspace_id={{ workspace.id }}"
        hx-target="#detail-panel" hx-swap="innerHTML" aria-label="Close detail panel">esc</a>
   </div>
-  <div class="ref mono">EXP-{{ exposure.id }}{% if exposure.affected_system %} · {{ exposure.affected_system }}{% endif %}{% if exposure.owner %} · owner: {{ exposure.owner }}{% endif %}{% if exposure.remediation_target_date %} · due {{ exposure.remediation_target_date.isoformat() }}{% if exposure.remediation_target_date < today and exposure.status.value in ['open','acknowledged','in_progress','fix_reported'] %} <span style="color:var(--critical)">(overdue)</span>{% endif %}{% endif %}</div>
+  <div class="ref mono">EXP-{{ exposure.id }}</div>
   <div class="title">{{ exposure.title }}</div>
+  <div class="meta-line">{{ exposure.affected_system or "no system" }} · owner: {{ exposure.owner or "unassigned" }} · due: {% if exposure.remediation_target_date %}{{ exposure.remediation_target_date.isoformat() }}{% if exposure.remediation_target_date < today and exposure.status.value in ['open','acknowledged','in_progress','fix_reported'] %} <span style="color:var(--critical)">(overdue)</span>{% endif %}{% else %}—{% endif %}</div>
 </div>
 
 <div class="panel-tabs">
@@ -211,8 +212,8 @@
       <div class="section-label">Linked asset{{ '' if linked_assets|length == 1 else 's' }}</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:10px">
         {% for asset in linked_assets %}
-        <form method="post" action="/assets/{{ asset.id }}"
-              hx-post="/assets/{{ asset.id }}" hx-target="#detail-panel" hx-swap="innerHTML"
+        <form method="post" action="/assets/{{ asset.id }}?workspace_id={{ workspace.id }}"
+              hx-post="/assets/{{ asset.id }}?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML"
               class="kv-block" style="display:flex;flex-direction:column;gap:8px">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="exposure_id" value="{{ exposure.id }}">
@@ -283,8 +284,8 @@
     </div>
     {% endif %}
 
-    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
-          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+    <form method="post" action="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="remediation">
       <label for="status-select">Status</label>
@@ -299,16 +300,16 @@
       </div>
     </form>
 
-    <form method="post" action="/exposures/{{ exposure.id }}"
-          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+    <form method="post" action="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}"
+          hx-post="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="remediation">
       <input type="hidden" name="acknowledged" value="{{ 'false' if exposure.acknowledged else 'true' }}">
       <button type="submit" class="btn btn-secondary">{{ "Unacknowledge" if exposure.acknowledged else "Acknowledge" }}</button>
     </form>
 
-    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
-          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+    <form method="post" action="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="remediation">
       <label for="owner-input">Owner</label>
@@ -318,8 +319,8 @@
       </div>
     </form>
 
-    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
-          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+    <form method="post" action="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="remediation">
       <label for="target-date-input">Due date</label>
@@ -330,8 +331,8 @@
       </div>
     </form>
 
-    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
-          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+    <form method="post" action="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="remediation">
       <label for="remediation-input">Remediation recommendation</label>
@@ -339,8 +340,8 @@
       <button type="submit" class="btn btn-secondary" style="align-self:flex-start">Save</button>
     </form>
 
-    <form method="post" action="/exposures/{{ exposure.id }}" class="field"
-          hx-post="/exposures/{{ exposure.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
+    <form method="post" action="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" class="field"
+          hx-post="/exposures/{{ exposure.id }}?workspace_id={{ workspace.id }}" hx-target="#detail-panel" hx-swap="innerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="tab" value="timeline">
       <label for="note-input">Add an internal note (timeline only, never shown to the client)</label>

@@ -29,7 +29,7 @@ from threnda.app.models.workspace import Workspace
 from threnda.app.models.workspace_membership import WorkspaceMembership
 from threnda.app.services.auth import validate_session
 from threnda.app.services.memberships import role_at_least
-from threnda.app.web.cookies import SESSION_COOKIE_NAME, WORKSPACE_COOKIE_NAME, cookie_secure
+from threnda.app.web.cookies import SESSION_COOKIE_NAME, WORKSPACE_COOKIE_NAME
 from threnda.app.web.csrf import get_csrf_token
 from threnda.app.web.errors import ClientPortalOnlyError, NotAuthenticatedError, NoWorkspaceError
 from threnda.app.web.filters import register_filters
@@ -113,13 +113,11 @@ def get_current_membership(
             workspace_id = -1
         membership = _lookup_membership(db, user.id, workspace_id)
         if membership is not None:
-            response.set_cookie(
-                WORKSPACE_COOKIE_NAME,
-                str(workspace_id),
-                httponly=True,
-                samesite="strict",
-                secure=cookie_secure(request.app.state.settings, request),
-            )
+            # Remember the explicitly chosen project. Setting the cookie on
+            # the injected ``response`` alone is lost whenever the route
+            # returns its own Response object (every template route does),
+            # so ``remember_workspace_cookie`` in threnda.app.main applies it.
+            request.state.remember_workspace_id = workspace_id
             return membership
 
     cookie_workspace_id = request.cookies.get(WORKSPACE_COOKIE_NAME)

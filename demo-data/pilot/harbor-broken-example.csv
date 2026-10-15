@@ -1,0 +1,4 @@
+id,title,severity,affected_system,ownr,due_date
+HA-01,Broken access control on report export,critical,reports.harbor-analytics.example,,2026-31-12
+HA-02,,high,api.harbor-analytics.example,,
+HA-03,Password reset token does not expire,urgent,app.harbor-analytics.example,,

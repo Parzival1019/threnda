@@ -209,17 +209,36 @@ def _finding_page(
     )
 
 
+#: Fixed confirmation messages, selected by key after a POST -> redirect, so
+#: reloading the page never re-submits a form and the query string is never
+#: echoed into the page.
+_NOTICES = {
+    "fixed": "Thank you — the finding is marked as fixed. Your consultant will retest it.",
+    "in_progress": "The finding is marked as in progress.",
+    "comment": "Comment posted.",
+    "evidence": "Evidence uploaded.",
+}
+
+
+def _back_to_finding(workspace_id: int, exposure_id: int, notice: str) -> RedirectResponse:
+    return RedirectResponse(
+        url=f"/portal/projects/{workspace_id}/findings/{exposure_id}?notice={notice}",
+        status_code=303,
+    )
+
+
 @router.get("/projects/{workspace_id}/findings/{exposure_id}")
 def portal_finding(
     request: Request,
     workspace_id: int,
     exposure_id: int,
+    notice: str | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     membership = _client_membership(db, user, workspace_id)
     exposure = _get_exposure(db, workspace_id, exposure_id)
-    return _finding_page(request, db, user, membership, exposure)
+    return _finding_page(request, db, user, membership, exposure, notice=_NOTICES.get(notice or ""))
 
 
 @router.post("/projects/{workspace_id}/findings/{exposure_id}/status")
@@ -245,12 +264,8 @@ def portal_set_status(
         return _finding_page(
             request, db, user, membership, exposure, error=str(exc), status_code=422
         )
-    notice = (
-        "Thank you — the finding is marked as fixed. Your consultant will retest it."
-        if requested == ExposureStatus.FIX_REPORTED
-        else "The finding is marked as in progress."
-    )
-    return _finding_page(request, db, user, membership, exposure, notice=notice)
+    key = "fixed" if requested == ExposureStatus.FIX_REPORTED else "in_progress"
+    return _back_to_finding(workspace_id, exposure_id, key)
 
 
 @router.post("/projects/{workspace_id}/findings/{exposure_id}/comments")
@@ -272,7 +287,7 @@ def portal_comment(
         return _finding_page(
             request, db, user, membership, exposure, error=str(exc), status_code=422
         )
-    return _finding_page(request, db, user, membership, exposure, notice="Comment posted.")
+    return _back_to_finding(workspace_id, exposure_id, "comment")
 
 
 @router.post("/projects/{workspace_id}/findings/{exposure_id}/attachments")
@@ -305,7 +320,7 @@ async def portal_attachment(
         return _finding_page(
             request, db, user, membership, exposure, error=str(exc), status_code=422
         )
-    return _finding_page(request, db, user, membership, exposure, notice="Evidence uploaded.")
+    return _back_to_finding(workspace_id, exposure_id, "evidence")
 
 
 @router.get("/projects/{workspace_id}/report")

@@ -78,7 +78,7 @@ def test_editing_linked_asset_updates_score_and_syncs_the_row(
 
     panel = client.get(f"/exposures/{exposure.id}/panel?tab=risk")
     token = extract_csrf(panel.text)
-    assert f'/assets/{asset.id}"' in panel.text
+    assert f"/assets/{asset.id}?workspace_id=" in panel.text
 
     response = client.post(
         f"/assets/{asset.id}",

@@ -1,0 +1,9 @@
+Fictional evidence for the Threnda demo — Harbor Analytics (fictional client).
+
+Change: password reset tokens now expire after 30 minutes and are single-use.
+Deployed: release 2026.10.2 (fictional)
+
+Verification by the client team:
+1. Requested a reset link at 10:02.
+2. Opened the link at 10:40 -> "This link has expired" (HTTP 410).
+3. Requested a new link, used it once, opened it again -> "This link was already used".

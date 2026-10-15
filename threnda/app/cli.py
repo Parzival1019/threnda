@@ -164,8 +164,13 @@ def ai_bundle(output: str, source: str | None = None) -> int:
     return 0
 
 
-def demo_reset(assume_yes: bool) -> int:
-    """Create or reset the fictional demo dataset (docs/demo.md)."""
+def demo_reset(assume_yes: bool, if_empty: bool = False) -> int:
+    """Create or reset the fictional demo dataset (docs/demo.md).
+
+    ``if_empty`` only seeds a database with no accounts yet and otherwise
+    does nothing — what the demo container's entrypoint uses, so a restart
+    doesn't wipe a demo in progress.
+    """
     from threnda.app.services.demo import DemoResetRefusedError, demo_password, reset_demo_data
 
     settings = get_settings()
@@ -190,6 +195,9 @@ def demo_reset(assume_yes: bool) -> int:
         if get_database_status(session) != "ok":
             print("Database is not migrated. Run `alembic upgrade head` first.", file=sys.stderr)
             return 1
+        if if_empty and has_accounts(session):
+            print("Demo data already present — leaving it as it is (--if-empty).")
+            return 0
         try:
             summary = reset_demo_data(session)
         except DemoResetRefusedError as exc:
@@ -318,6 +326,9 @@ def main(argv: list[str] | None = None) -> None:
         "reset", help="Delete everything and load the fictional demo data (demo mode only)."
     )
     demo_reset_parser.add_argument("--yes", action="store_true", help="Skip the confirmation.")
+    demo_reset_parser.add_argument(
+        "--if-empty", action="store_true", help="Only seed a database that has no accounts yet."
+    )
     backup_parser = subparsers.add_parser("backup", help="Back up a SQLite database.")
     backup_parser.add_argument("output", help="Path of the backup file to create.")
     restore_parser = subparsers.add_parser("restore", help="Restore a SQLite backup.")
@@ -325,7 +336,7 @@ def main(argv: list[str] | None = None) -> None:
     restore_parser.add_argument("--yes", action="store_true", help="Skip the confirmation.")
     args = parser.parse_args(argv)
     if args.command == "demo" and args.demo_command == "reset":
-        raise SystemExit(demo_reset(args.yes))
+        raise SystemExit(demo_reset(args.yes or args.if_empty, args.if_empty))
     if args.command == "backup":
         raise SystemExit(backup_database(args.output))
     if args.command == "restore":

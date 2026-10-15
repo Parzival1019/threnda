@@ -311,7 +311,10 @@ def _panel_context(
         "csrf_token": get_csrf_token(request),
         "workspace": workspace,
         "statuses": list(ExposureStatus),
-        "allowed_statuses": sorted(allowed_next_statuses(exposure.status), key=lambda s: s.value),
+        # Lifecycle order (the enum's declaration order), not alphabetical.
+        "allowed_statuses": [
+            s for s in ExposureStatus if s in allowed_next_statuses(exposure.status)
+        ],
         "risk_result": compute_risk_score(exposure),
         "linked_assets": _linked_assets(exposure),
         "criticalities": list(AssetCriticality),

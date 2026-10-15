@@ -180,8 +180,10 @@ def parse_template_csv(raw: bytes) -> tuple[list[TemplateRow], list[CsvProblem]]
 
     columns = [h.strip().lower() for h in header]
     seen: set[str] = set()
+    header_unusable = False
     for name in columns:
         if not name:
+            header_unusable = True
             problems.append(CsvProblem(1, None, "A column has an empty header name."))
         elif name not in TEMPLATE_COLUMNS:
             problems.append(
@@ -192,12 +194,18 @@ def parse_template_csv(raw: bytes) -> tuple[list[TemplateRow], list[CsvProblem]]
                 )
             )
         elif name in seen:
+            header_unusable = True
             problems.append(CsvProblem(1, name, f"Column {name!r} appears more than once."))
         seen.add(name)
     for required in REQUIRED_COLUMNS:
         if required not in columns:
+            header_unusable = True
             problems.append(CsvProblem(1, required, f"Required column {required!r} is missing."))
-    if problems:
+    # Unknown columns alone don't stop row validation (their values are
+    # simply not read), so one upload reports every problem in the file.
+    # A missing required column or a duplicated header does: rows can't be
+    # interpreted reliably then.
+    if header_unusable:
         return [], problems
 
     rows: list[TemplateRow] = []

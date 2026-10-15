@@ -40,15 +40,15 @@
   </div>
 </form>
 
-<form id="bulk-form" method="post" action="/exposures/bulk" style="display:flex;flex-direction:column;flex:1;min-height:0">
+<form id="bulk-form" method="post" action="/exposures/bulk?workspace_id={{ workspace.id }}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="return_qs" value="{{ request.url.query }}">
 
   <div class="bulk-bar" id="bulk-bar" hidden>
     <span class="bulk-count mono">0 selected</span>
-    <button type="submit" formaction="/exposures/bulk?action=acknowledge" class="btn btn-secondary">Acknowledge</button>
-    <button type="submit" formaction="/exposures/bulk?action=in_progress" class="btn btn-secondary">Mark in progress</button>
-    <button type="submit" formaction="/exposures/bulk?action=accept_risk" class="btn btn-secondary">Accept risk</button>
+    <button type="submit" formaction="/exposures/bulk?action=acknowledge&workspace_id={{ workspace.id }}" class="btn btn-secondary">Acknowledge</button>
+    <button type="submit" formaction="/exposures/bulk?action=in_progress&workspace_id={{ workspace.id }}" class="btn btn-secondary">Mark in progress</button>
+    <button type="submit" formaction="/exposures/bulk?action=accept_risk&workspace_id={{ workspace.id }}" class="btn btn-secondary">Accept risk</button>
   </div>
 
   <div class="table-head grid-row">

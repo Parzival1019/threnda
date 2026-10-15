@@ -185,3 +185,57 @@ def test_queue_search_and_filters(client: TestClient) -> None:
     web = client.get(f"/exposures?workspace_id={project}&overdue=true&q=SQL")
     assert "SQL injection in search" in web.text
     assert "Weak TLS ciphers" not in web.text
+
+
+def test_panel_forms_target_their_own_project(client: TestClient) -> None:
+    """Regression: with several projects, the detail-panel forms must act on
+    the project being viewed, not whichever project a cookie last named."""
+    ids = []
+    for name in ("Proj One", "Proj Two"):
+        created = client.post("/api/v1/clients", json={"name": f"{name} client"}).json()
+        project = client.post(
+            f"/api/v1/clients/{created['id']}/projects", json={"name": name}
+        ).json()["id"]
+        client.post(
+            "/api/v1/findings-csv",
+            params={"workspace_id": project},
+            files={"file": ("r.csv", FINDINGS_CSV.encode(), "text/csv")},
+        )
+        ids.append(project)
+    first, second = ids
+    queue = client.get(f"/exposures?workspace_id={first}")
+    assert client.cookies.get("threnda_workspace_id") == str(first)
+    exposure = exposure_ids(client, second)["Missing HSTS"]
+    panel = client.get(f"/exposures/{exposure}/panel?workspace_id={second}&tab=remediation")
+    action = re.search(r'action="(/exposures/\d+\?workspace_id=\d+)"', panel.text)
+    assert action is not None and action.group(1).endswith(f"workspace_id={second}")
+    saved = client.post(
+        action.group(1),
+        data={"csrf_token": extract_csrf(queue.text), "owner": "Team Two", "tab": "remediation"},
+    )
+    assert saved.status_code == 200
+    detail = client.get(f"/api/v1/exposures/{exposure}", params={"workspace_id": second})
+    assert detail.json()["owner"] == "Team Two"
+
+
+def test_portal_actions_redirect_so_reload_does_not_resubmit(
+    app: FastAPI, client: TestClient
+) -> None:
+    world = build_two_client_world(app, client)
+    project = world.project_a
+    with logged_in(app, "alpha-client") as alpha:
+        exposure = exposure_ids(alpha, project)["Missing HSTS"]
+        page = alpha.get(f"/portal/projects/{project}/findings/{exposure}")
+        response = alpha.post(
+            f"/portal/projects/{project}/findings/{exposure}/attachments",
+            data={"csrf_token": extract_csrf(page.text)},
+            files={"file": ("proof.txt", b"done\n", "text/plain")},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        landed = alpha.get(response.headers["location"])
+        assert "Evidence uploaded." in landed.text
+        assert (
+            "?notice=<script>"
+            not in alpha.get(f"/portal/projects/{project}/findings/{exposure}?notice=<script>").text
+        )

@@ -42,10 +42,10 @@
       {% for issue in candidate.validation_issues %}<div style="font-size:11px;color:var(--text-muted)">• {{ issue }}</div>{% endfor %}
     </div>
     <div style="min-width:250px">
-      <form method="post" action="/documents/candidates/{{ candidate.id }}/accept">
+      <form method="post" action="/documents/candidates/{{ candidate.id }}/accept?workspace_id={{ workspace.id }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Reviewed title<input name="title" value="{{ candidate.extracted_title }}" maxlength="500" required></label><label>Severity<select name="severity" required><option value="">Choose…</option>{% for sev in severities %}<option value="{{ sev.value }}" {% if candidate.extracted_severity == sev %}selected{% endif %}>{{ sev.value }}</option>{% endfor %}</select></label><button class="btn btn-primary" type="submit">Accept as finding</button>
       </form>
-      <form method="post" action="/documents/candidates/{{ candidate.id }}/reject" style="margin-top:8px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-secondary" type="submit">Reject candidate</button></form>
+      <form method="post" action="/documents/candidates/{{ candidate.id }}/reject?workspace_id={{ workspace.id }}" style="margin-top:8px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-secondary" type="submit">Reject candidate</button></form>
     </div>
   </div>
   {% endfor %}
