@@ -1326,6 +1326,6 @@ pending owner review. Scope, decisions and handover (Hungarian):
   backfill migration still runs against the current ORM.
 - The Hungarian tester guide was replayed end to end in headless Chrome
   against a live demo instance (21/21 steps), and the landing-page form
-  delivery was checked against a local receiver (`site/check_form.py`).
+  delivery was checked against a local receiver (`landing/check_form.py`).
 - Not verified here: Docker images/Compose runs and the PostgreSQL
   backup/restore drill (no Docker daemon on the build machine).

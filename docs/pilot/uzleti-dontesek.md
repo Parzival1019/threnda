@@ -13,8 +13,8 @@ felső tételek blokkolják az első fizető pilotot.
 | 6 | **Fizetős csomag neve és ára** (havi/éves, per tanácsadó / per ügyfél / átalány) | értékesítés | csomagok.md |
 | 7 | **Pilot keretei**: időtartam (30 nap?), felhasználószám, egy ügyfélprojekt | ajánlat | pilot-ajanlat.md |
 | 8 | **Referencia-hozzájárulás** feltétele | marketing | pilot-ajanlat.md |
-| 9 | **Demókérések fogadása**: melyik e-mail cím, és melyik űrlapszolgáltatás (pl. Formspree, saját végpont) | a landing page űrlapja ezek nélkül nem kézbesít | site/README.md |
-| 10 | **Domain és a landing page tárhelye** | publikálás | site/README.md |
+| 9 | **Demókérések fogadása**: melyik e-mail cím, és melyik űrlapszolgáltatás (pl. Formspree, saját végpont) | a landing page űrlapja ezek nélkül nem kézbesít | landing/README.md |
+| 10 | **Domain és a landing page tárhelye** | publikálás | landing/README.md |
 | 11 | **Nyilvános demópéldány** legyen-e (és ki állítja vissza) | értékesítő önálló demói | telepites-es-demo.md |
 | 12 | **Ütemterv-prioritás** a pilotvisszajelzések alapján (e-mail-értesítés, SSO/2FA, márkázott PDF, magyar felület) | ne ígérjünk dátumot döntés nélkül | atadas.md |
 | 13 | **Értékesítői jutalék / célok** a részidős értékesítőnek | toborzás | — |

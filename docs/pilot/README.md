@@ -13,7 +13,7 @@ felülete angol nyelvű; ezek a dokumentumok magyarul készültek.
 | [pilot-ajanlat.md](pilot-ajanlat.md) | értékesítő, tulajdonos | 30 napos pilotajánlat vázlata, mérhető sikerfeltételekkel |
 | [csomagok.md](csomagok.md) | tulajdonos | Community és fizetős csomag funkciókülönbség-javaslat |
 | [uzleti-dontesek.md](uzleti-dontesek.md) | tulajdonos | a meghozandó üzleti döntések listája |
-| [../../site/index.html](../../site/index.html) | értékesítő | landing page (valós termékképernyőkkel, demókérő űrlappal) |
+| [../../landing/index.html](../../landing/index.html) | értékesítő | landing page (valós termékképernyőkkel, demókérő űrlappal) |
 
 A dokumentumokban a **[DÖNTENDŐ]** jelölés olyan árat, vállalást vagy
 kereskedelmi feltételt jelöl, amelyet a tulajdonosnak kell eldöntenie —

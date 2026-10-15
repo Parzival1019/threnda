@@ -50,7 +50,7 @@ teszttel.
 | Bandit (magas súlyosság), `pip-audit` | nincs találat |
 | Alembic upgrade → downgrade → upgrade (SQLite) | rendben |
 | A [kipróbálási útmutató](kiprobalasi-utmutato.md) 18 lépése élő demópéldányon, fej nélküli Chrome-ban végigjátszva | 21/21 ellenőrzés rendben |
-| Landing page demókérő űrlap kézbesítése helyi fogadóra (`site/check_form.py`) | rendben (siker, fogadói hiba, beállítatlan állapot) |
+| Landing page demókérő űrlap kézbesítése helyi fogadóra (`landing/check_form.py`) | rendben (siker, fogadói hiba, beállítatlan állapot) |
 | Docker image build, Compose futtatás, PostgreSQL mentés/visszaállítás | **nem futott** — a gépen nem futott a Docker démon. A Compose-fájlok szintaktikai ellenőrzése (`docker compose config`) rendben. |
 
 Futtatás:
@@ -88,7 +88,7 @@ pytest && ruff check . && mypy threnda tests
    `docker compose -f docker-compose.demo.yml -p threnda-demo up -d --build`,
    majd a [kipróbálási útmutató](kiprobalasi-utmutato.md) egyszeri kézi végigjátszása a konténeres demón.
 3. **PostgreSQL mentés–visszaállítás próba** a [../backup-restore.md](../backup-restore.md) szerint, az első pilot előtt.
-4. **Landing page űrlap kézbesítése:** `site/config.js` — `formEndpoint` (pl. Formspree) vagy `contactEmail` beállítása, adatkezelési tájékoztató link a hozzájárulás mellé, majd egy valódi tesztkérés elküldése és megérkezésének ellenőrzése. **Jelenleg az űrlap nem kézbesít sehova** (ezt az oldal ki is írja).
+4. **Landing page űrlap kézbesítése:** `landing/config.js` — `formEndpoint` (pl. Formspree) vagy `contactEmail` beállítása, adatkezelési tájékoztató link a hozzájárulás mellé, majd egy valódi tesztkérés elküldése és megérkezésének ellenőrzése. **Jelenleg az űrlap nem kézbesít sehova** (ezt az oldal ki is írja).
 5. Landing page domain és tárhely; utána a képernyőképek frissítése, ha a felület változik.
 6. Ha a demót nyilvánosan elérhetővé teszed: saját `THRENDA_DEMO_PASSWORD` és `THRENDA_DEMO_SECRET_KEY`, HTTPS.
 7. A [pilotajánlat](pilot-ajanlat.md) és a [GYIK](gyik.md) **[DÖNTENDŐ]** pontjainak kitöltése.

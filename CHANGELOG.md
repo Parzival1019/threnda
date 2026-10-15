@@ -26,7 +26,7 @@ project uses semantic versioning.
 - Fictional, resettable demo dataset (`threnda demo reset`,
   `docker-compose.demo.yml`) guarded by demo mode and a database marker.
 - `threnda backup` / `threnda restore` for SQLite.
-- Hungarian pilot/sales pack and a landing page under `docs/pilot/` and `site/`.
+- Hungarian pilot/sales pack and a landing page under `docs/pilot/` and `landing/`.
 
 ### Changed
 
